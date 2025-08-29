@@ -1,0 +1,24 @@
+# Telegram Bot Token (получить у @BotFather)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+
+# OpenAI API Key (получить на https://platform.openai.com/api-keys)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Supabase Configuration (получить в настройках проекта Supabase)
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your_supabase_anon_key_here
+
+# Stripe Configuration (получить в дашборде Stripe)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Stripe Price IDs (создать в дашборде Stripe)
+STRIPE_PRICE_ID_MONTHLY=price_...
+STRIPE_PRICE_ID_YEARLY=price_...
+
+# App URL для Stripe редиректов
+APP_URL=https://your-domain.com
+
+# G4F Fallback (опционально)
+ENABLE_G4F_FALLBACK=false
