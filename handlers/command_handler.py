@@ -269,10 +269,15 @@ class CommandHandler:
             
             plan_name = "Месячная" if plan_type == "monthly" else "Годовая"
             
+            # Безопасное получение цены с fallback значением
+            plan_price = plan.get('price', 4.99 if plan_type == 'monthly' else 49.99)
+            plan_currency = plan.get('currency', 'USD')
+            plan_duration = plan.get('duration_days', 30 if plan_type == 'monthly' else 365)
+            
             message = (
                 f"💳 *{plan_name} подписка*\n\n"
-                f"💰 Стоимость: ${plan['price']} {plan['currency']}\n"
-                f"📅 Лительность: {plan['duration_days']} дней\n"
+                f"💰 Стоимость: ${plan_price} {plan_currency}\n"
+                f"📅 Лительность: {plan_duration} дней\n"
                 f"📸 Фото: Безлимит\n\n"
                 f"💳 *Выберите способ оплаты:*\n\n"
                 f"{provider_descriptions}"
@@ -329,10 +334,16 @@ class CommandHandler:
                 [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
             ]
             
+            # Безопасное получение данных плана
+            plan_name = plan.get('name', 'Подписка')
+            plan_price = plan.get('price', 4.99 if plan_type == 'monthly' else 49.99)
+            plan_currency = plan.get('currency', 'USD')
+            plan_duration = plan.get('duration_days', 30 if plan_type == 'monthly' else 365)
+            
             message = (
-                f"💳 *{plan['name']}*\n\n"
-                f"💰 Стоимость: ${plan['price']} {plan['currency']}\n"
-                f"📅 Длительность: {plan['duration_days']} дней\n"
+                f"💳 *{plan_name}*\n\n"
+                f"💰 Стоимость: ${plan_price} {plan_currency}\n"
+                f"📅 Длительность: {plan_duration} дней\n"
                 f"📸 Фото: Безлимит\n\n"
                 f"ℹ️ *Как оплатить:*\n"
             )
@@ -344,7 +355,7 @@ class CommandHandler:
                     f"3. Подтвердите оплату\n"
                     f"4. Подписка активируется автоматически!\n\n"
                     f"🔒 *Безопасность:* Оплата обрабатывается PayPal\n"
-                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan['duration_days']} дней\n"
+                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan_duration} дней\n"
                     f"❌ *Отмена:* Можно отменить в любое время"
                 )
             else:  # stripe
@@ -354,7 +365,7 @@ class CommandHandler:
                     f"3. Подтвердите оплату\n"
                     f"4. Подписка активируется автоматически!\n\n"
                     f"🔒 *Безопасность:* Оплата обрабатывается Stripe\n"
-                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan['duration_days']} дней\n"
+                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan_duration} дней\n"
                     f"❌ *Отмена:* Можно отменить в любое время"
                 )
             
@@ -388,9 +399,14 @@ class CommandHandler:
             # Создаем инвойс напрямую через bot API
             from telegram import LabeledPrice
             
+            # Безопасное получение данных для инвойса
+            stars_name = stars_plan.get('name', 'Подписка Telegram Stars')
+            stars_price = stars_plan.get('price_stars', 100 if plan_type == 'monthly' else 1000)
+            stars_duration = stars_plan.get('duration_days', 30 if plan_type == 'monthly' else 365)
+            
             prices = [LabeledPrice(
-                label=stars_plan["name"],
-                amount=stars_plan["price_stars"]
+                label=stars_name,
+                amount=stars_price
             )]
             
             payload = f"stars_subscription_{db_user.id}_{plan_type}_{int(datetime.now().timestamp())}"
@@ -398,9 +414,9 @@ class CommandHandler:
             # Отправляем инвойс напрямую
             await query.bot.send_invoice(
                 chat_id=query.message.chat_id,
-                title=f"⭐ {stars_plan['name']}",
-                description=f"Безлимитный анализ фото еды на {stars_plan['duration_days']} дней\n"
-                           f"💰 Цена: {stars_plan['price_stars']} Telegram Stars\n"
+                title=f"⭐ {stars_name}",
+                description=f"Безлимитный анализ фото еды на {stars_duration} дней\n"
+                           f"💰 Цена: {stars_price} Telegram Stars\n"
                            f"📸 Неограниченное количество фото\n"
                            f"🤖 ИИ анализ калорий, белков, жиров, углеводов",
                 payload=payload,
@@ -426,10 +442,15 @@ class CommandHandler:
                 [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
             ]
             
+            # Безопасное получение данных Telegram Stars плана
+            stars_name = stars_plan.get('name', 'Подписка Telegram Stars')
+            stars_price = stars_plan.get('price_stars', 100 if plan_type == 'monthly' else 1000)
+            stars_duration = stars_plan.get('duration_days', 30 if plan_type == 'monthly' else 365)
+            
             message = (
-                f"⭐ *{stars_plan['name']} - Telegram Stars*\n\n"
-                f"💰 Стоимость: {stars_plan['price_stars']} ⭐ Stars\n"
-                f"📅 Длительность: {stars_plan['duration_days']} дней\n"
+                f"⭐ *{stars_name} - Telegram Stars*\n\n"
+                f"💰 Стоимость: {stars_price} ⭐ Stars\n"
+                f"📅 Длительность: {stars_duration} дней\n"
                 f"📸 Фото: Безлимит\n\n"
                 f"ℹ️ *Оплата через Telegram Stars:*\n"
                 f"1. Инвойс отправлен в чат\n"
@@ -437,7 +458,7 @@ class CommandHandler:
                 f"3. Подтвердите оплату Stars\n"
                 f"4. Подписка активируется автоматически!\n\n"
                 f"⭐ *Telegram Stars:* Внутренняя валюта Telegram\n"
-                f"🔄 *Подписка:* Продлевается автоматически каждые {stars_plan['duration_days']} дней"
+                f"🔄 *Подписка:* Продлевается автоматически каждые {stars_duration} дней"
             )
             
             await query.edit_message_text(
