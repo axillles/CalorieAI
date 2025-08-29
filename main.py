@@ -41,21 +41,29 @@ async def main():
             logger.warning("SUPABASE_KEY не установлен или установлен неправильно")
             logger.info("Бот будет работать без базы данных (только анализ изображений)")
         
-        # Проверяем настройки Stripe
-        if not settings.STRIPE_SECRET_KEY:
-            logger.error("STRIPE_SECRET_KEY не установлен")
-            logger.info("Для работы подписок необходимо настроить Stripe")
-            logger.info("Создайте файл .env и добавьте STRIPE_SECRET_KEY=sk_...")
-            return
+        # Check payment provider settings
+        enabled_providers = settings.ENABLED_PAYMENT_PROVIDERS
         
-        if not settings.STRIPE_WEBHOOK_SECRET:
-            logger.warning("STRIPE_WEBHOOK_SECRET не установлен")
-            logger.info("Для работы веб-хуков Stripe добавьте STRIPE_WEBHOOK_SECRET в .env")
+        # Only check Stripe if it's enabled
+        if "stripe" in enabled_providers:
+            if not settings.STRIPE_SECRET_KEY:
+                logger.warning("STRIPE_SECRET_KEY не установлен, Stripe будет отключен")
+            
+            if not settings.STRIPE_WEBHOOK_SECRET:
+                logger.warning("STRIPE_WEBHOOK_SECRET не установлен")
+                logger.info("Для работы веб-хуков Stripe добавьте STRIPE_WEBHOOK_SECRET в .env")
+            
+            if not settings.STRIPE_PRICE_ID_MONTHLY or not settings.STRIPE_PRICE_ID_YEARLY:
+                logger.warning("Не настроены Price ID для планов подписок Stripe")
+                logger.info("Добавьте STRIPE_PRICE_ID_MONTHLY и STRIPE_PRICE_ID_YEARLY в .env")
         
-        if not settings.STRIPE_PRICE_ID_MONTHLY or not settings.STRIPE_PRICE_ID_YEARLY:
-            logger.error("Не настроены Price ID для планов подписок")
-            logger.info("Добавьте STRIPE_PRICE_ID_MONTHLY и STRIPE_PRICE_ID_YEARLY в .env")
-            return
+        # Check PayPal if enabled
+        if "paypal" in enabled_providers:
+            if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
+                logger.warning("PayPal credentials не настроены")
+                logger.info("Добавьте PAYPAL_CLIENT_ID и PAYPAL_CLIENT_SECRET в .env")
+        
+        logger.info(f"Включенные провайдеры платежей: {', '.join(enabled_providers)}")
         
         # Создаем экземпляры обработчиков
         command_handler = BotCommandHandler()
@@ -84,9 +92,14 @@ async def main():
         application.add_handler(CommandHandler("help", command_handler.help_command))
         application.add_handler(CommandHandler("stats", command_handler.stats_command))
         application.add_handler(CommandHandler("week", command_handler.week_command))
+        
         # Callback-кнопки
-        from telegram.ext import CallbackQueryHandler
+        from telegram.ext import CallbackQueryHandler, PreCheckoutQueryHandler
         application.add_handler(CallbackQueryHandler(command_handler.callback_query_handler))
+        
+        # Обработчики платежей Telegram Stars
+        application.add_handler(PreCheckoutQueryHandler(command_handler.handle_pre_checkout_query))
+        application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, command_handler.handle_successful_payment))
         
         # Регистрируем обработчики сообщений
         application.add_handler(MessageHandler(filters.PHOTO, message_handler.handle_photo))

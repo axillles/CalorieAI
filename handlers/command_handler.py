@@ -1,10 +1,10 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from services.supabase_service import SupabaseService
 from services.subscription_service import SubscriptionService
 from utils.report_generator import ReportGenerator
 from models.data_models import User
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -182,13 +182,22 @@ class CommandHandler:
                 )
                 return
 
-            # Обработка подписок
-            if data == "subscribe_monthly":
-                await self._handle_subscription_request(query, db_user, "monthly")
+            # Обработка подписок - новая система с выбором провайдера
+            if data == "choose_monthly":
+                await self._show_provider_selection(query, db_user, "monthly")
                 return
                 
-            if data == "subscribe_yearly":
-                await self._handle_subscription_request(query, db_user, "yearly")
+            if data == "choose_yearly":
+                await self._show_provider_selection(query, db_user, "yearly")
+                return
+                
+            # Обработка подписок через конкретных провайдеров
+            if data.startswith("subscribe_"):
+                parts = data.split("_")
+                if len(parts) >= 3:  # subscribe_monthly_stripe, subscribe_yearly_paypal, etc.
+                    plan_type = parts[1]  # monthly или yearly
+                    provider = parts[2]   # stripe, paypal, telegram_stars
+                    await self._handle_subscription_request(query, db_user, plan_type, provider)
                 return
                 
             if data == "subscription_stats":
@@ -226,8 +235,61 @@ class CommandHandler:
             except:
                 pass
 
-    async def _handle_subscription_request(self, query, db_user, plan_type: str):
-        """Обработка запроса на подписку через Stripe"""
+    async def _show_provider_selection(self, query, db_user, plan_type: str):
+        """Показать выбор провайдера для оплаты"""
+        try:
+            plans = self.subscription_service.get_subscription_plans()
+            plan = plans.get(plan_type)
+            available_providers = self.subscription_service.get_available_providers()
+            
+            if not plan:
+                await query.edit_message_text("❌ Неизвестный план подписки")
+                return
+            
+            keyboard = []
+            
+            # Добавляем кнопки для каждого доступного провайдера
+            for provider in available_providers:
+                provider_name = self.subscription_service.get_provider_display_name(provider)
+                callback_data = f"subscribe_{plan_type}_{provider}"
+                keyboard.append([InlineKeyboardButton(provider_name, callback_data=callback_data)])
+            
+            # Кнопка назад
+            keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="subscription_stats")])
+            
+            # Описание провайдеров
+            provider_descriptions = ""
+            for provider in available_providers:
+                if provider == "telegram_stars":
+                    provider_descriptions += "• Telegram Stars - внутренняя валюта Telegram\n"
+                elif provider == "paypal":
+                    provider_descriptions += "• PayPal - глобальная платежная система\n"
+                elif provider == "stripe":
+                    provider_descriptions += "• Stripe - карты Visa/Mastercard\n"
+            
+            plan_name = "Месячная" if plan_type == "monthly" else "Годовая"
+            
+            message = (
+                f"💳 *{plan_name} подписка*\n\n"
+                f"💰 Стоимость: ${plan['price']} {plan['currency']}\n"
+                f"📅 Лительность: {plan['duration_days']} дней\n"
+                f"📸 Фото: Безлимит\n\n"
+                f"💳 *Выберите способ оплаты:*\n\n"
+                f"{provider_descriptions}"
+            )
+            
+            await query.edit_message_text(
+                text=message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка показа выбора провайдера: {e}")
+            await query.edit_message_text("❌ Ошибка показа способов оплаты")
+
+    async def _handle_subscription_request(self, query, db_user, plan_type: str, provider: str = None):
+        """Обработка запроса на подписку через указанный провайдер"""
         try:
             plans = self.subscription_service.get_subscription_plans()
             plan = plans.get(plan_type)
@@ -236,14 +298,24 @@ class CommandHandler:
                 await query.edit_message_text("❌ Неизвестный план подписки")
                 return
             
-            # Отправляем сообщение о создании ссылки
-            loading_message = await query.edit_message_text("🔄 Создаем ссылку на оплату...")
+            # Определяем провайдер
+            if not provider:
+                provider = self.subscription_service.primary_provider
             
-            # Создаем Stripe Checkout Session
+            # Отправляем сообщение о обработке платежа
+            loading_message = await query.edit_message_text("🔄 Обрабатываем запрос на оплату...")
+            
+            if provider == "telegram_stars":
+                # Для Telegram Stars создаем инвойс напрямую
+                await self._handle_telegram_stars_payment(query, db_user, plan_type, plan)
+                return
+            
+            # Для остальных провайдеров создаем ссылку на оплату
             payment_url = await self.subscription_service.create_payment_link(
                 user_id=db_user.id,
                 plan_type=plan_type,
-                telegram_user_id=query.from_user.id
+                telegram_user_id=query.from_user.id,
+                provider=provider
             )
             
             if not payment_url:
@@ -251,9 +323,10 @@ class CommandHandler:
                 return
             
             # Создаем клавиатуру со ссылкой на оплату
+            provider_name = self.subscription_service.get_provider_display_name(provider)
             keyboard = [
-                [InlineKeyboardButton("💳 Оплатить через Stripe", url=payment_url)],
-                [InlineKeyboardButton("🔙 Назад к планам", callback_data="show_subscription_plans")]
+                [InlineKeyboardButton(f"💳 Оплатить через {provider_name}", url=payment_url)],
+                [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
             ]
             
             message = (
@@ -262,14 +335,28 @@ class CommandHandler:
                 f"📅 Длительность: {plan['duration_days']} дней\n"
                 f"📸 Фото: Безлимит\n\n"
                 f"ℹ️ *Как оплатить:*\n"
-                f"1. Нажмите кнопку 'Оплатить через Stripe'\n"
-                f"2. Введите данные карты\n"
-                f"3. Подтвердите оплату\n"
-                f"4. Подписка активируется автоматически!\n\n"
-                f"🔒 *Безопасность:* Оплата обрабатывается Stripe\n"
-                f"🔄 *Подписка:* Продлевается автоматически каждые {plan['duration_days']} дней\n"
-                f"❌ *Отмена:* Можно отменить в любое время"
             )
+            
+            if provider == "paypal":
+                message += (
+                    f"1. Нажмите кнопку 'Оплатить через PayPal'\n"
+                    f"2. Войдите в PayPal аккаунт\n"
+                    f"3. Подтвердите оплату\n"
+                    f"4. Подписка активируется автоматически!\n\n"
+                    f"🔒 *Безопасность:* Оплата обрабатывается PayPal\n"
+                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan['duration_days']} дней\n"
+                    f"❌ *Отмена:* Можно отменить в любое время"
+                )
+            else:  # stripe
+                message += (
+                    f"1. Нажмите кнопку 'Оплатить через Stripe'\n"
+                    f"2. Введите данные карты\n"
+                    f"3. Подтвердите оплату\n"
+                    f"4. Подписка активируется автоматически!\n\n"
+                    f"🔒 *Безопасность:* Оплата обрабатывается Stripe\n"
+                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan['duration_days']} дней\n"
+                    f"❌ *Отмена:* Можно отменить в любое время"
+                )
             
             await query.edit_message_text(
                 text=message,
@@ -280,6 +367,175 @@ class CommandHandler:
         except Exception as e:
             logger.error(f"Ошибка обработки подписки: {e}")
             await query.edit_message_text("❌ Ошибка обработки подписки")
+    
+    async def _handle_telegram_stars_payment(self, query, db_user, plan_type: str, plan: dict):
+        """Обработка оплаты через Telegram Stars"""
+        try:
+            # Получаем сервис Telegram Stars
+            stars_service = self.subscription_service.get_payment_service("telegram_stars")
+            if not stars_service:
+                await query.edit_message_text("❌ Telegram Stars недоступен")
+                return
+            
+            # Получаем планы из сервиса
+            stars_plans = stars_service.get_subscription_plans()
+            stars_plan = stars_plans.get(plan_type, {})
+            
+            if not stars_plan:
+                await query.edit_message_text("❌ Неизвестный план Telegram Stars")
+                return
+            
+            # Создаем инвойс напрямую через bot API
+            from telegram import LabeledPrice
+            
+            prices = [LabeledPrice(
+                label=stars_plan["name"],
+                amount=stars_plan["price_stars"]
+            )]
+            
+            payload = f"stars_subscription_{db_user.id}_{plan_type}_{int(datetime.now().timestamp())}"
+            
+            # Отправляем инвойс напрямую
+            await query.bot.send_invoice(
+                chat_id=query.message.chat_id,
+                title=f"⭐ {stars_plan['name']}",
+                description=f"Безлимитный анализ фото еды на {stars_plan['duration_days']} дней\n"
+                           f"💰 Цена: {stars_plan['price_stars']} Telegram Stars\n"
+                           f"📸 Неограниченное количество фото\n"
+                           f"🤖 ИИ анализ калорий, белков, жиров, углеводов",
+                payload=payload,
+                provider_token="",  # Пустой для Telegram Stars
+                currency="XTR",     # XTR = Telegram Stars
+                prices=prices,
+                start_parameter=f"stars_subscription_{plan_type}",
+                photo_url="https://telegram.org/img/t_logo.png",
+                photo_size=512,
+                photo_width=512,
+                photo_height=512,
+                need_name=False,
+                need_phone_number=False,
+                need_email=False,
+                need_shipping_address=False,
+                send_phone_number_to_provider=False,
+                send_email_to_provider=False,
+                is_flexible=False
+            )
+            
+            # Обновляем сообщение с информацией об оплате
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
+            ]
+            
+            message = (
+                f"⭐ *{stars_plan['name']} - Telegram Stars*\n\n"
+                f"💰 Стоимость: {stars_plan['price_stars']} ⭐ Stars\n"
+                f"📅 Длительность: {stars_plan['duration_days']} дней\n"
+                f"📸 Фото: Безлимит\n\n"
+                f"ℹ️ *Оплата через Telegram Stars:*\n"
+                f"1. Инвойс отправлен в чат\n"
+                f"2. Нажмите кнопку 'Оплатить' в инвойсе\n"
+                f"3. Подтвердите оплату Stars\n"
+                f"4. Подписка активируется автоматически!\n\n"
+                f"⭐ *Telegram Stars:* Внутренняя валюта Telegram\n"
+                f"🔄 *Подписка:* Продлевается автоматически каждые {stars_plan['duration_days']} дней"
+            )
+            
+            await query.edit_message_text(
+                text=message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+            logger.info(f"Создан Telegram Stars инвойс для пользователя {db_user.id}: {plan_type}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка обработки Telegram Stars: {e}")
+            await query.edit_message_text("❌ Ошибка обработки оплаты")
+    
+    async def handle_pre_checkout_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка предварительного запроса оплаты Telegram Stars"""
+        try:
+            query = update.pre_checkout_query
+            
+            # Получаем сервис Telegram Stars
+            stars_service = self.subscription_service.get_payment_service("telegram_stars")
+            if not stars_service:
+                await query.answer(ok=False, error_message="Ошибка: Telegram Stars недоступен")
+                return
+            
+            # Проверяем платеж через сервис
+            is_valid = await stars_service.handle_pre_checkout_query(query)
+            
+            if is_valid:
+                await query.answer(ok=True)
+                logger.info(f"Предварительная проверка прошла успешно: {query.id}")
+            else:
+                await query.answer(ok=False, error_message="Ошибка проверки платежа")
+                logger.error(f"Ошибка предварительной проверки: {query.id}")
+                
+        except Exception as e:
+            logger.error(f"Ошибка обработки предварительного запроса: {e}")
+            try:
+                await update.pre_checkout_query.answer(ok=False, error_message="Ошибка обработки")
+            except:
+                pass
+    
+    async def handle_successful_payment(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка успешной оплаты Telegram Stars"""
+        try:
+            payment = update.message.successful_payment
+            user = update.effective_user
+            
+            logger.info(f"Получена успешная оплата: {payment.telegram_payment_charge_id}")
+            
+            # Получаем пользователя из БД
+            db_user = await self.supabase_service.get_user_by_telegram_id(user.id)
+            if not db_user:
+                logger.error(f"Пользователь {user.id} не найден в БД")
+                await update.message.reply_text("❌ Ошибка: пользователь не найден")
+                return
+            
+            # Получаем сервис Telegram Stars
+            stars_service = self.subscription_service.get_payment_service("telegram_stars")
+            if not stars_service:
+                logger.error("Telegram Stars сервис недоступен")
+                await update.message.reply_text("❌ Ошибка обработки платежа")
+                return
+            
+            # Обрабатываем успешный платеж
+            success = await stars_service.handle_successful_payment(
+                payment=payment,
+                user_id=db_user.id,
+                telegram_user_id=user.id
+            )
+            
+            if success:
+                # Отправляем подтверждение
+                keyboard = [
+                    [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
+                    [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")]
+                ]
+                
+                await update.message.reply_text(
+                    f"✅ *Подписка активирована!*\n\n"
+                    f"⭐ Оплата через Telegram Stars: {payment.total_amount} Stars\n"
+                    f"📸 Теперь вы можете анализировать неограниченное количество фото!\n\n"
+                    f"🔄 Подписка продлевается автоматически\n"
+                    f"❌ Отменить можно в любое время",
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                logger.info(f"Подписка успешно активирована для пользователя {user.id}")
+            else:
+                await update.message.reply_text("❌ Ошибка активации подписки. Обратитесь в поддержку.")
+                logger.error(f"Ошибка активации подписки для пользователя {user.id}")
+                
+        except Exception as e:
+            logger.error(f"Ошибка обработки успешной оплаты: {e}")
+            try:
+                await update.message.reply_text("❌ Ошибка обработки платежа")
+            except:
+                pass
 
     async def _show_subscription_stats(self, query, db_user):
         """Показать статистику подписки"""

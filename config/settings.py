@@ -39,6 +39,15 @@ class Settings:
     STRIPE_PRICE_ID_MONTHLY = os.getenv("STRIPE_PRICE_ID_MONTHLY")
     STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
     
+    # PayPal Configuration
+    PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID")
+    PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET")
+    PAYPAL_BASE_URL = os.getenv("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com")  # sandbox по умолчанию
+    
+    # Payment Provider Settings
+    ENABLED_PAYMENT_PROVIDERS = os.getenv("ENABLED_PAYMENT_PROVIDERS", "telegram_stars,paypal,stripe").split(",")
+    PRIMARY_PAYMENT_PROVIDER = os.getenv("PRIMARY_PAYMENT_PROVIDER", "telegram_stars")
+    
     # App URL for Stripe redirects
     APP_URL = os.getenv("APP_URL", "https://your-domain.com")
     

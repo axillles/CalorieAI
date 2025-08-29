@@ -36,24 +36,36 @@ class MessageHandler:
             
             if not subscription_check["can_analyze"]:
                 if subscription_check["reason"] == "subscription_required":
-                    # Показываем планы подписки
+                    # Показываем планы подписки с выбором провайдера
                     plans = subscription_check["subscription_plans"]
-                    keyboard = [
-                        [InlineKeyboardButton(f"💳 {plans['monthly']['name']} - ${plans['monthly']['price']}", 
-                                            callback_data="subscribe_monthly")],
-                        [InlineKeyboardButton(f"💳 {plans['yearly']['name']} - ${plans['yearly']['price']}", 
-                                            callback_data="subscribe_yearly")],
-                        [InlineKeyboardButton("📊 Статистика использования", callback_data="subscription_stats")]
-                    ]
+                    available_providers = self.subscription_service.get_available_providers()
+                    
+                    keyboard = []
+                    
+                    # Короткие кнопки для планов
+                    keyboard.append([InlineKeyboardButton("💳 Месячная подписка", callback_data="choose_monthly")])
+                    keyboard.append([InlineKeyboardButton("💰 Годовая подписка", callback_data="choose_yearly")])
+                    keyboard.append([InlineKeyboardButton("📊 Статистика использования", callback_data="subscription_stats")])
                     
                     message = (
                         f"⚠️ *Лимит бесплатных фото исчерпан!*\n\n"
                         f"Вы проанализировали: {subscription_check['photos_analyzed']} фото\n\n"
-                        f"💡 *Выберите план подписки:*\n"
-                        f"• Месячная: ${plans['monthly']['price']} - безлимит фото\n"
-                        f"• Годовая: ${plans['yearly']['price']} - безлимит фото (экономия 17%)\n\n"
-                        f"После оплаты вы сможете анализировать неограниченное количество фото!"
+                        f"💡 *Выберите план подписки:*\n\n"
+                        f"💳 **Месячная:** ${plans['monthly']['price']} - безлимит фото\n"
+                        f"💰 **Годовая:** ${plans['yearly']['price']} - безлимит фото (экономия 17%)\n\n"
+                        f"💳 *Доступные способы оплаты:*\n"
                     )
+                    
+                    for provider in available_providers:
+                        provider_name = self.subscription_service.get_provider_display_name(provider)
+                        if provider == "telegram_stars":
+                            message += f"• {provider_name} - внутренняя валюта Telegram\n"
+                        elif provider == "paypal":
+                            message += f"• {provider_name} - глобальная платежная система\n"
+                        elif provider == "stripe":
+                            message += f"• {provider_name} - карты Visa/Mastercard\n"
+                    
+                    message += f"\nПосле оплаты вы сможете анализировать неограниченное количество фото!"
                     
                     await update.message.reply_text(message, parse_mode='Markdown', 
                                                  reply_markup=InlineKeyboardMarkup(keyboard))

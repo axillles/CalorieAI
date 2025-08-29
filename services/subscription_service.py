@@ -1,22 +1,76 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from models.data_models import Subscription, Payment, User
 from services.supabase_service import SupabaseService
-from services.stripe_service import StripeService
 from config.settings import settings
+
+# Импортируем сервисы платежей
+try:
+    from services.stripe_service import StripeService
+except ImportError:
+    StripeService = None
+
+try:
+    from services.paypal_service import PayPalService
+except ImportError:
+    PayPalService = None
+
+try:
+    from services.telegram_stars_service import TelegramStarsService
+except ImportError:
+    TelegramStarsService = None
 
 logger = logging.getLogger(__name__)
 
 class SubscriptionService:
-    """Сервис для управления подписками через Stripe"""
+    """Сервис для управления подписками через разные провайдеры"""
     
     def __init__(self):
         self.supabase_service = SupabaseService()
-        self.stripe_service = StripeService()
         
-        # Планы подписок - получаем из StripeService
-        self.subscription_plans = self.stripe_service.get_subscription_plans()
+        # Инициализируем доступные провайдеры
+        self.payment_providers = {}
+        
+        # Telegram Stars
+        if TelegramStarsService and "telegram_stars" in settings.ENABLED_PAYMENT_PROVIDERS:
+            self.payment_providers["telegram_stars"] = TelegramStarsService()
+            
+        # PayPal
+        if PayPalService and "paypal" in settings.ENABLED_PAYMENT_PROVIDERS:
+            self.payment_providers["paypal"] = PayPalService()
+            
+        # Stripe
+        if StripeService and "stripe" in settings.ENABLED_PAYMENT_PROVIDERS:
+            self.payment_providers["stripe"] = StripeService()
+        
+        # Определяем основной провайдер
+        self.primary_provider = settings.PRIMARY_PAYMENT_PROVIDER
+        if self.primary_provider not in self.payment_providers:
+            # Если основной недоступен, берем первый доступный
+            self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
+        
+        # Планы подписок - получаем из основного провайдера
+        if self.primary_provider and self.primary_provider in self.payment_providers:
+            self.subscription_plans = self.payment_providers[self.primary_provider].get_subscription_plans()
+        else:
+            # Запасные планы
+            self.subscription_plans = {
+                "monthly": {
+                    "name": "Месячная подписка",
+                    "price": 4.99,
+                    "currency": "USD",
+                    "duration_days": 30,
+                    "photos_limit": -1
+                },
+                "yearly": {
+                    "name": "Годовая подписка",
+                    "price": 49.99,
+                    "currency": "USD",
+                    "duration_days": 365,
+                    "photos_limit": -1
+                }
+            }
     
     async def can_analyze_photo(self, user_id: int) -> Dict[str, Any]:
         """Проверить, может ли пользователь анализировать фото"""
@@ -25,34 +79,49 @@ class SubscriptionService:
             if not user:
                 return {"can_analyze": False, "reason": "user_not_found"}
             
-            # Проверяем активную подписку
-            if user.subscription_status == "active":
+            # Проверяем активную подписку (с fallback для отсутствующих полей)
+            subscription_status = getattr(user, 'subscription_status', 'free')
+            subscription_end = getattr(user, 'subscription_end', None)
+            photos_analyzed = getattr(user, 'photos_analyzed', 0)
+            
+            if subscription_status == "active":
                 # Дополнительно проверяем, не истекла ли подписка
-                if user.subscription_end and user.subscription_end < datetime.now():
-                    # Обновляем статус подписки как истекшую
-                    await self._update_subscription_status(user.id, "expired")
-                    return {
-                        "can_analyze": False, 
-                        "reason": "subscription_expired",
-                        "photos_analyzed": user.photos_analyzed,
-                        "subscription_plans": self.subscription_plans
-                    }
+                if subscription_end:
+                    try:
+                        if isinstance(subscription_end, str):
+                            end_date = datetime.fromisoformat(subscription_end.replace('Z', '+00:00'))
+                        else:
+                            end_date = subscription_end
+                        
+                        if end_date < datetime.now():
+                            # Обновляем статус подписки как истекшую
+                            await self._update_subscription_status(user.id, "expired")
+                            return {
+                                "can_analyze": False, 
+                                "reason": "subscription_expired",
+                                "photos_analyzed": photos_analyzed,
+                                "subscription_plans": self.subscription_plans
+                            }
+                    except Exception as e:
+                        logger.warning(f"Ошибка проверки даты окончания подписки: {e}")
+                
                 return {"can_analyze": True, "reason": "active_subscription"}
             
             # Проверяем бесплатный лимит (первое фото бесплатно)
-            if user.photos_analyzed < settings.FREE_PHOTO_LIMIT:
+            if photos_analyzed < settings.FREE_PHOTO_LIMIT:
                 return {"can_analyze": True, "reason": "free_photo"}
             
             return {
                 "can_analyze": False, 
                 "reason": "subscription_required",
-                "photos_analyzed": user.photos_analyzed,
+                "photos_analyzed": photos_analyzed,
                 "subscription_plans": self.subscription_plans
             }
             
         except Exception as e:
             logger.error(f"Ошибка проверки возможности анализа: {e}")
-            return {"can_analyze": False, "reason": "error"}
+            # В случае ошибки разрешаем бесплатное фото для отладки
+            return {"can_analyze": True, "reason": "error_fallback"}
     
     async def increment_photos_analyzed(self, user_id: int) -> bool:
         """Увеличить счетчик проанализированных фото"""
@@ -76,25 +145,48 @@ class SubscriptionService:
             logger.error(f"Ошибка увеличения счетчика фото: {e}")
             return False
     
-    async def create_payment_link(self, user_id: int, plan_type: str, telegram_user_id: int) -> Optional[str]:
-        """Создать ссылку на оплату Stripe"""
+    async def create_payment_link(self, user_id: int, plan_type: str, telegram_user_id: int, provider: str = None) -> Optional[str]:
+        """Создать ссылку на оплату через указанный провайдер"""
         try:
             if plan_type not in self.subscription_plans:
                 logger.error(f"Неизвестный план подписки: {plan_type}")
                 return None
             
-            # Создаем Checkout Session через StripeService
-            payment_url = await self.stripe_service.create_checkout_session(
-                user_id=user_id,
-                plan_type=plan_type,
-                telegram_user_id=telegram_user_id
-            )
+            # Определяем провайдер
+            if not provider:
+                provider = self.primary_provider
+            
+            if provider not in self.payment_providers:
+                logger.error(f"Провайдер {provider} недоступен")
+                return None
+            
+            # Создаем платеж через соответствующий сервис
+            payment_service = self.payment_providers[provider]
+            
+            if provider == "stripe":
+                payment_url = await payment_service.create_checkout_session(
+                    user_id=user_id,
+                    plan_type=plan_type,
+                    telegram_user_id=telegram_user_id
+                )
+            elif provider == "paypal":
+                payment_url = await payment_service.create_subscription_payment(
+                    user_id=user_id,
+                    plan_type=plan_type,
+                    telegram_user_id=telegram_user_id
+                )
+            elif provider == "telegram_stars":
+                # Для Telegram Stars нет прямой ссылки - они обрабатываются через инвойс
+                return "telegram_stars_invoice_required"
+            else:
+                logger.error(f"Неподдерживаемый провайдер: {provider}")
+                return None
             
             if payment_url:
-                logger.info(f"Создана ссылка на оплату для пользователя {user_id}: {plan_type}")
+                logger.info(f"Создана ссылка на оплату {provider} для пользователя {user_id}: {plan_type}")
                 return payment_url
             else:
-                logger.error(f"Ошибка создания ссылки на оплату для пользователя {user_id}")
+                logger.error(f"Ошибка создания ссылки на оплату {provider} для пользователя {user_id}")
                 return None
                 
         except Exception as e:
@@ -192,4 +284,57 @@ class SubscriptionService:
             
         except Exception as e:
             logger.error(f"Ошибка сброса счетчика фото: {e}")
+            return False
+    
+    def get_available_providers(self) -> List[str]:
+        """Получить список доступных провайдеров"""
+        return list(self.payment_providers.keys())
+    
+    def get_provider_display_name(self, provider: str) -> str:
+        """Получить отображаемое имя провайдера"""
+        names = {
+            "telegram_stars": "⭐ Telegram Stars",
+            "paypal": "💙 PayPal",
+            "stripe": "💳 Stripe"
+        }
+        return names.get(provider, provider.title())
+    
+    def get_payment_service(self, provider: str):
+        """Получить сервис для указанного провайдера"""
+        return self.payment_providers.get(provider)
+    
+    async def _activate_subscription(self, user_id: int, plan_type: str, provider: str, provider_payment_id: str) -> bool:
+        """Активировать подписку для пользователя"""
+        try:
+            from datetime import datetime, timedelta
+            
+            plan = self.subscription_plans.get(plan_type)
+            if not plan:
+                logger.error(f"Неизвестный план: {plan_type}")
+                return False
+            
+            # Рассчитываем даты подписки
+            start_date = datetime.now()
+            end_date = start_date + timedelta(days=plan['duration_days'])
+            
+            # Обновляем пользователя в БД
+            result = self.supabase_service.supabase.table("users").update({
+                "subscription_status": "active",
+                "subscription_plan": plan_type,
+                "subscription_start": start_date.isoformat(),
+                "subscription_end": end_date.isoformat(),
+                "payment_provider": provider,
+                "provider_payment_id": provider_payment_id,
+                "photos_analyzed": 0  # Сбрасываем счетчик фото
+            }).eq("id", user_id).execute()
+            
+            if result.data:
+                logger.info(f"Подписка активирована для пользователя {user_id}: {plan_type} через {provider}")
+                return True
+            else:
+                logger.error(f"Ошибка активации подписки для пользователя {user_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка активации подписки: {e}")
             return False
