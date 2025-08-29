@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS payments (
 -- Enable RLS on payments table
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
--- Create policy for payments
+-- Create policy for payments (drop if exists first)
+DROP POLICY IF EXISTS "Users can view own payments" ON payments;
 CREATE POLICY "Users can view own payments" ON payments
     FOR SELECT USING (auth.uid()::text = user_id::text);
 

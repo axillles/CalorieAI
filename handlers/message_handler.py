@@ -32,7 +32,7 @@ class MessageHandler:
                 return
             
             # Проверяем подписку перед анализом
-            subscription_check = await self.subscription_service.can_analyze_photo(db_user.id)
+            subscription_check = await self.subscription_service.can_analyze_photo(user.id)
             
             if not subscription_check["can_analyze"]:
                 if subscription_check["reason"] == "subscription_required":
@@ -47,12 +47,16 @@ class MessageHandler:
                     keyboard.append([InlineKeyboardButton("💰 Годовая подписка", callback_data="choose_yearly")])
                     keyboard.append([InlineKeyboardButton("📊 Статистика использования", callback_data="subscription_stats")])
                     
+                    # Безопасное получение цен с fallback значениями
+                    monthly_price = plans.get('monthly', {}).get('price', 4.99)
+                    yearly_price = plans.get('yearly', {}).get('price', 49.99)
+                    
                     message = (
                         f"⚠️ *Лимит бесплатных фото исчерпан!*\n\n"
                         f"Вы проанализировали: {subscription_check['photos_analyzed']} фото\n\n"
                         f"💡 *Выберите план подписки:*\n\n"
-                        f"💳 **Месячная:** ${plans['monthly']['price']} - безлимит фото\n"
-                        f"💰 **Годовая:** ${plans['yearly']['price']} - безлимит фото (экономия 17%)\n\n"
+                        f"💳 **Месячная:** ${monthly_price} - безлимит фото\n"
+                        f"💰 **Годовая:** ${yearly_price} - безлимит фото (экономия 17%)\n\n"
                         f"💳 *Доступные способы оплаты:*\n"
                     )
                     
@@ -135,7 +139,7 @@ class MessageHandler:
                     [InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]
                 ]
                 # Увеличиваем счетчик проанализированных фото
-                await self.subscription_service.increment_photos_analyzed(db_user.id)
+                await self.subscription_service.increment_photos_analyzed(user.id)
                 
                 # Удаляем сообщение о загрузке и отправляем результат
                 await processing_msg.delete()

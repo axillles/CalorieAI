@@ -49,6 +49,25 @@ async def main():
             logger.warning("SUPABASE_KEY не установлен или установлен неправильно")
             logger.info("Бот будет работать без базы данных (только анализ изображений)")
         
+        # Check payment provider settings
+        enabled_providers = settings.ENABLED_PAYMENT_PROVIDERS
+        logger.info(f"Включенные провайдеры платежей: {', '.join(enabled_providers)}")
+        
+        # Only check Stripe if it's enabled
+        if "stripe" in enabled_providers:
+            if not settings.STRIPE_SECRET_KEY:
+                logger.warning("STRIPE_SECRET_KEY не установлен, Stripe будет отключен")
+        
+        # Check PayPal if enabled
+        if "paypal" in enabled_providers:
+            if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
+                logger.warning("PayPal credentials не настроены")
+                logger.info("Добавьте PAYPAL_CLIENT_ID и PAYPAL_CLIENT_SECRET в .env")
+        
+        # Telegram Stars работает автоматически
+        if "telegram_stars" in enabled_providers:
+            logger.info("✅ Telegram Stars включен и готов к работе")
+        
         # Создаем экземпляры обработчиков
         command_handler = BotCommandHandler()
         message_handler = BotMessageHandler()
@@ -63,9 +82,14 @@ async def main():
         application.add_handler(CommandHandler("week", command_handler.week_command))
         
         # Callback-кнопки
-        from telegram.ext import CallbackQueryHandler
+        from telegram.ext import CallbackQueryHandler, PreCheckoutQueryHandler
         application.add_handler(CallbackQueryHandler(command_handler.callback_query_handler))
         logger.info("✅ CallbackQueryHandler зарегистрирован")
+        
+        # Обработчики платежей Telegram Stars
+        application.add_handler(PreCheckoutQueryHandler(command_handler.handle_pre_checkout_query))
+        application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, command_handler.handle_successful_payment))
+        logger.info("✅ Telegram Stars payment handlers зарегистрированы")
         
         # Регистрируем обработчики сообщений
         application.add_handler(MessageHandler(filters.PHOTO, message_handler.handle_photo))

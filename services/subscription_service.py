@@ -75,14 +75,21 @@ class SubscriptionService:
     async def can_analyze_photo(self, user_id: int) -> Dict[str, Any]:
         """Проверить, может ли пользователь анализировать фото"""
         try:
+            logger.info(f"🔍 Проверка подписки для telegram_id: {user_id}")
+            
             user = await self.supabase_service.get_user_by_telegram_id(user_id)
             if not user:
+                logger.warning(f"⚠️ Пользователь {user_id} не найден в БД")
                 return {"can_analyze": False, "reason": "user_not_found"}
+            
+            logger.info(f"✅ Пользователь найден: db_id={user.id}")
             
             # Проверяем активную подписку (с fallback для отсутствующих полей)
             subscription_status = getattr(user, 'subscription_status', 'free')
             subscription_end = getattr(user, 'subscription_end', None)
             photos_analyzed = getattr(user, 'photos_analyzed', 0)
+            
+            logger.info(f"📊 Статистика: status={subscription_status}, photos_analyzed={photos_analyzed}, limit={settings.FREE_PHOTO_LIMIT}")
             
             if subscription_status == "active":
                 # Дополнительно проверяем, не истекла ли подписка
@@ -109,8 +116,10 @@ class SubscriptionService:
             
             # Проверяем бесплатный лимит (первое фото бесплатно)
             if photos_analyzed < settings.FREE_PHOTO_LIMIT:
+                logger.info(f"✅ Бесплатное фото разрешено: {photos_analyzed}/{settings.FREE_PHOTO_LIMIT}")
                 return {"can_analyze": True, "reason": "free_photo"}
             
+            logger.info(f"⚠️ Лимит бесплатных фото исчерпан: {photos_analyzed}/{settings.FREE_PHOTO_LIMIT}")
             return {
                 "can_analyze": False, 
                 "reason": "subscription_required",
@@ -123,22 +132,23 @@ class SubscriptionService:
             # В случае ошибки разрешаем бесплатное фото для отладки
             return {"can_analyze": True, "reason": "error_fallback"}
     
-    async def increment_photos_analyzed(self, user_id: int) -> bool:
+    async def increment_photos_analyzed(self, telegram_user_id: int) -> bool:
         """Увеличить счетчик проанализированных фото"""
         try:
-            # Получаем текущий счетчик
-            user_result = self.supabase_service.supabase.table("users").select("photos_analyzed").eq("id", user_id).execute()
+            # Получаем текущий счетчик по telegram_id
+            user_result = self.supabase_service.supabase.table("users").select("id, photos_analyzed").eq("telegram_id", telegram_user_id).execute()
             
             if not user_result.data:
-                logger.error(f"Пользователь {user_id} не найден")
+                logger.error(f"Пользователь {telegram_user_id} не найден")
                 return False
             
-            current_count = user_result.data[0]["photos_analyzed"]
+            user_data = user_result.data[0]
+            current_count = user_data.get("photos_analyzed", 0)
             
             # Увеличиваем счетчик
             result = self.supabase_service.supabase.table("users").update({
                 "photos_analyzed": current_count + 1
-            }).eq("id", user_id).execute()
+            }).eq("id", user_data["id"]).execute()
             
             return True
         except Exception as e:
