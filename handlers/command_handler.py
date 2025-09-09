@@ -193,11 +193,29 @@ class CommandHandler:
                 
             # Обработка подписок через конкретных провайдеров
             if data.startswith("subscribe_"):
-                parts = data.split("_")
-                if len(parts) >= 3:  # subscribe_monthly_stripe, subscribe_yearly_paypal, etc.
-                    plan_type = parts[1]  # monthly или yearly
-                    provider = parts[2]   # stripe, paypal, telegram_stars
-                    await self._handle_subscription_request(query, db_user, plan_type, provider)
+                # Правильный парсинг для telegram_stars который содержит подчеркивания
+                if "_monthly_telegram_stars" in data:
+                    plan_type = "monthly"
+                    provider = "telegram_stars"
+                elif "_yearly_telegram_stars" in data:
+                    plan_type = "yearly"
+                    provider = "telegram_stars"
+                elif "_monthly_telegram_payments" in data:
+                    plan_type = "monthly"
+                    provider = "telegram_payments"
+                elif "_yearly_telegram_payments" in data:
+                    plan_type = "yearly"
+                    provider = "telegram_payments"
+                else:
+                    # Обычные провайдеры без подчеркиваний
+                    parts = data.split("_")
+                    if len(parts) >= 3:  # subscribe_monthly_provider
+                        plan_type = parts[1]
+                        provider = "_".join(parts[2:])  # поддержка provider с подчеркиваниями
+                    else:
+                        return
+                
+                await self._handle_subscription_request(query, context, db_user, plan_type, provider)
                 return
                 
             if data == "subscription_stats":
@@ -240,7 +258,8 @@ class CommandHandler:
         try:
             plans = self.subscription_service.get_subscription_plans()
             plan = plans.get(plan_type)
-            available_providers = self.subscription_service.get_available_providers()
+            # Показываем только Telegram Payments
+            available_providers = ["telegram_payments"]
             
             if not plan:
                 await query.edit_message_text("❌ Неизвестный план подписки")
@@ -258,14 +277,7 @@ class CommandHandler:
             keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="subscription_stats")])
             
             # Описание провайдеров
-            provider_descriptions = ""
-            for provider in available_providers:
-                if provider == "telegram_stars":
-                    provider_descriptions += "• Telegram Stars - внутренняя валюта Telegram\n"
-                elif provider == "paypal":
-                    provider_descriptions += "• PayPal - глобальная платежная система\n"
-                elif provider == "stripe":
-                    provider_descriptions += "• Stripe - карты Visa/Mastercard\n"
+            provider_descriptions = "• Telegram Payments (Redsys) - оплата банковской картой\n"
             
             plan_name = "Месячная" if plan_type == "monthly" else "Годовая"
             
@@ -293,7 +305,7 @@ class CommandHandler:
             logger.error(f"Ошибка показа выбора провайдера: {e}")
             await query.edit_message_text("❌ Ошибка показа способов оплаты")
 
-    async def _handle_subscription_request(self, query, db_user, plan_type: str, provider: str = None):
+    async def _handle_subscription_request(self, query, context: ContextTypes.DEFAULT_TYPE, db_user, plan_type: str, provider: str = None):
         """Обработка запроса на подписку через указанный провайдер"""
         try:
             plans = self.subscription_service.get_subscription_plans()
@@ -312,7 +324,43 @@ class CommandHandler:
             
             if provider == "telegram_stars":
                 # Для Telegram Stars создаем инвойс напрямую
-                await self._handle_telegram_stars_payment(query, db_user, plan_type, plan)
+                await self._handle_telegram_stars_payment(query, context, db_user, plan_type, plan)
+                return
+
+            if provider == "telegram_payments":
+                # Создаем инвойс через Telegram Payments provider_token (например Redsys)
+                tgpay_service = self.subscription_service.get_payment_service("telegram_payments")
+                if not tgpay_service:
+                    await query.edit_message_text("❌ Telegram Payments недоступен")
+                    return
+
+                payload = await tgpay_service.create_invoice_payload(db_user.id, plan_type)
+                if not payload:
+                    await query.edit_message_text("❌ Ошибка создания инвойса")
+                    return
+
+                await context.bot.send_invoice(
+                    chat_id=query.message.chat_id,
+                    title=payload["title"],
+                    description=payload["description"],
+                    payload=payload["payload"],
+                    provider_token=payload["provider_token"],
+                    currency=payload["currency"],
+                    prices=payload["prices"],
+                    start_parameter=payload["start_parameter"],
+                )
+
+                keyboard = [[InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]]
+                await query.edit_message_text(
+                    text=(
+                        "💳 Инвойс отправлен в чат. Откройте счет и оплатите.\n\n"
+                        "• Для теста успеха: карта 4918010000000085\n"
+                        "• Для отклонения: карта 4918010000000051\n"
+                        "• Для 3DS/Challenge: 4548819407777774, 4918019199883839 или 4548814479727229 (сумма > 60€)"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
                 return
             
             # Для остальных провайдеров создаем ссылку на оплату
@@ -348,26 +396,18 @@ class CommandHandler:
                 f"ℹ️ *Как оплатить:*\n"
             )
             
-            if provider == "paypal":
+            if provider == "telegram_payments":
                 message += (
-                    f"1. Нажмите кнопку 'Оплатить через PayPal'\n"
-                    f"2. Войдите в PayPal аккаунт\n"
-                    f"3. Подтвердите оплату\n"
-                    f"4. Подписка активируется автоматически!\n\n"
-                    f"🔒 *Безопасность:* Оплата обрабатывается PayPal\n"
+                    f"1. Откройте отправленный инвойс 'Оплатить'\n"
+                    f"2. Введите тестовые данные карты\n"
+                    f"3. При сумме > 60€ можно проверить 3DS-челлендж\n"
+                    f"4. После оплаты подписка активируется автоматически!\n\n"
+                    f"🔒 *Безопасность:* Оплата обрабатывается провайдером Telegram (например, Redsys)\n"
                     f"🔄 *Подписка:* Продлевается автоматически каждые {plan_duration} дней\n"
                     f"❌ *Отмена:* Можно отменить в любое время"
                 )
-            else:  # stripe
-                message += (
-                    f"1. Нажмите кнопку 'Оплатить через Stripe'\n"
-                    f"2. Введите данные карты\n"
-                    f"3. Подтвердите оплату\n"
-                    f"4. Подписка активируется автоматически!\n\n"
-                    f"🔒 *Безопасность:* Оплата обрабатывается Stripe\n"
-                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan_duration} дней\n"
-                    f"❌ *Отмена:* Можно отменить в любое время"
-                )
+            else:
+                message += "Провайдер не поддерживается."
             
             await query.edit_message_text(
                 text=message,
@@ -379,7 +419,7 @@ class CommandHandler:
             logger.error(f"Ошибка обработки подписки: {e}")
             await query.edit_message_text("❌ Ошибка обработки подписки")
     
-    async def _handle_telegram_stars_payment(self, query, db_user, plan_type: str, plan: dict):
+    async def _handle_telegram_stars_payment(self, query, context: ContextTypes.DEFAULT_TYPE, db_user, plan_type: str, plan: dict):
         """Обработка оплаты через Telegram Stars"""
         try:
             # Получаем сервис Telegram Stars
@@ -412,7 +452,7 @@ class CommandHandler:
             payload = f"stars_subscription_{db_user.id}_{plan_type}_{int(datetime.now().timestamp())}"
             
             # Отправляем инвойс напрямую
-            await query.bot.send_invoice(
+            await context.bot.send_invoice(
                 chat_id=query.message.chat_id,
                 title=f"⭐ {stars_name}",
                 description=f"Безлимитный анализ фото еды на {stars_duration} дней\n"
@@ -474,25 +514,41 @@ class CommandHandler:
             await query.edit_message_text("❌ Ошибка обработки оплаты")
     
     async def handle_pre_checkout_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка предварительного запроса оплаты Telegram Stars"""
+        """Обработка предварительного запроса оплаты Telegram Stars и Telegram Payments"""
         try:
             query = update.pre_checkout_query
-            
-            # Получаем сервис Telegram Stars
-            stars_service = self.subscription_service.get_payment_service("telegram_stars")
-            if not stars_service:
-                await query.answer(ok=False, error_message="Ошибка: Telegram Stars недоступен")
+
+            payload = query.invoice_payload or ""
+
+            if payload.startswith("stars_"):
+                stars_service = self.subscription_service.get_payment_service("telegram_stars")
+                if not stars_service:
+                    await query.answer(ok=False, error_message="Ошибка: Telegram Stars недоступен")
+                    return
+                is_valid = await stars_service.handle_pre_checkout_query(query)
+                if is_valid:
+                    await query.answer(ok=True)
+                    logger.info(f"Предварительная проверка прошла успешно: {query.id}")
+                else:
+                    await query.answer(ok=False, error_message="Ошибка проверки платежа")
+                    logger.error(f"Ошибка предварительной проверки: {query.id}")
                 return
-            
-            # Проверяем платеж через сервис
-            is_valid = await stars_service.handle_pre_checkout_query(query)
-            
-            if is_valid:
-                await query.answer(ok=True)
-                logger.info(f"Предварительная проверка прошла успешно: {query.id}")
-            else:
-                await query.answer(ok=False, error_message="Ошибка проверки платежа")
-                logger.error(f"Ошибка предварительной проверки: {query.id}")
+
+            if payload.startswith("tgpay_"):
+                tgpay_service = self.subscription_service.get_payment_service("telegram_payments")
+                if not tgpay_service:
+                    await query.answer(ok=False, error_message="Ошибка: Telegram Payments недоступен")
+                    return
+                result = await tgpay_service.handle_pre_checkout(payload, query.total_amount, query.currency)
+                if result:
+                    await query.answer(ok=True)
+                    logger.info(f"Pre-checkout OK (Telegram Payments): {query.id}")
+                else:
+                    await query.answer(ok=False, error_message="Ошибка проверки платежа")
+                    logger.error(f"Pre-checkout failed (Telegram Payments): {query.id}")
+                return
+
+            await query.answer(ok=False, error_message="Неизвестный тип платежа")
                 
         except Exception as e:
             logger.error(f"Ошибка обработки предварительного запроса: {e}")
@@ -502,7 +558,7 @@ class CommandHandler:
                 pass
     
     async def handle_successful_payment(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка успешной оплаты Telegram Stars"""
+        """Обработка успешной оплаты Telegram Stars и Telegram Payments"""
         try:
             payment = update.message.successful_payment
             user = update.effective_user
@@ -516,40 +572,71 @@ class CommandHandler:
                 await update.message.reply_text("❌ Ошибка: пользователь не найден")
                 return
             
-            # Получаем сервис Telegram Stars
-            stars_service = self.subscription_service.get_payment_service("telegram_stars")
-            if not stars_service:
-                logger.error("Telegram Stars сервис недоступен")
-                await update.message.reply_text("❌ Ошибка обработки платежа")
-                return
-            
-            # Обрабатываем успешный платеж
-            success = await stars_service.handle_successful_payment(
-                payment=payment,
-                user_id=db_user.id,
-                telegram_user_id=user.id
-            )
-            
-            if success:
-                # Отправляем подтверждение
-                keyboard = [
-                    [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
-                    [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")]
-                ]
-                
-                await update.message.reply_text(
-                    f"✅ *Подписка активирована!*\n\n"
-                    f"⭐ Оплата через Telegram Stars: {payment.total_amount} Stars\n"
-                    f"📸 Теперь вы можете анализировать неограниченное количество фото!\n\n"
-                    f"🔄 Подписка продлевается автоматически\n"
-                    f"❌ Отменить можно в любое время",
-                    parse_mode='Markdown',
-                    reply_markup=InlineKeyboardMarkup(keyboard)
+            payload = payment.invoice_payload or ""
+
+            # Telegram Payments success
+            if payload.startswith("tgpay_"):
+                tgpay_service = self.subscription_service.get_payment_service("telegram_payments")
+                if not tgpay_service:
+                    logger.error("Telegram Payments сервис недоступен")
+                    await update.message.reply_text("❌ Ошибка обработки платежа")
+                    return
+                activated = await tgpay_service.activate_after_success(
+                    payload=payload,
+                    telegram_payment_charge_id=payment.telegram_payment_charge_id,
+                    provider_payment_charge_id=payment.provider_payment_charge_id,
                 )
-                logger.info(f"Подписка успешно активирована для пользователя {user.id}")
-            else:
-                await update.message.reply_text("❌ Ошибка активации подписки. Обратитесь в поддержку.")
-                logger.error(f"Ошибка активации подписки для пользователя {user.id}")
+                if activated:
+                    keyboard = [
+                        [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
+                        [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")],
+                    ]
+                    await update.message.reply_text(
+                        "✅ *Подписка активирована!*\n\n"
+                        f"💳 Оплата через {getattr(settings, 'PAYMENT_PROVIDER_NAME', 'Telegram Payments')}\n"
+                        "📸 Теперь вы можете анализировать неограниченное количество фото!\n\n"
+                        "🔄 Подписка продлевается автоматически\n"
+                        "❌ Отменить можно в любое время",
+                        parse_mode='Markdown',
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                    )
+                    logger.info(f"Подписка активирована (Telegram Payments) для пользователя {user.id}")
+                else:
+                    await update.message.reply_text("❌ Ошибка активации подписки. Обратитесь в поддержку.")
+                    logger.error(f"Ошибка активации подписки (Telegram Payments) для пользователя {user.id}")
+                return
+
+            # Telegram Stars success
+            if payload.startswith("stars_"):
+                stars_service = self.subscription_service.get_payment_service("telegram_stars")
+                if not stars_service:
+                    logger.error("Telegram Stars сервис недоступен")
+                    await update.message.reply_text("❌ Ошибка обработки платежа")
+                    return
+                success = await stars_service.handle_successful_payment(update=update, context=context)
+                if success:
+                    # Отправляем подтверждение
+                    keyboard = [
+                        [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
+                        [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")]
+                    ]
+                    
+                    await update.message.reply_text(
+                        f"✅ *Подписка активирована!*\n\n"
+                        f"⭐ Оплата через Telegram Stars: {payment.total_amount} Stars\n"
+                        f"📸 Теперь вы можете анализировать неограниченное количество фото!\n\n"
+                        f"🔄 Подписка продлевается автоматически\n"
+                        f"❌ Отменить можно в любое время",
+                        parse_mode='Markdown',
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                    logger.info(f"Подписка успешно активирована для пользователя {user.id}")
+                else:
+                    await update.message.reply_text("❌ Ошибка активации подписки. Обратитесь в поддержку.")
+                    logger.error(f"Ошибка активации подписки для пользователя {user.id}")
+                return
+
+            await update.message.reply_text("❌ Неизвестный тип платежа")
                 
         except Exception as e:
             logger.error(f"Ошибка обработки успешной оплаты: {e}")
@@ -626,7 +713,7 @@ class CommandHandler:
                 f"ℹ️ *О подписке:*\n"
                 f"• Первое фото - бесплатно\n"
                 f"• Подписка - безлимит фото\n"
-                f"• Автопродление через Stripe\n"
+                f"• Автопродление\n"
                 f"• Отмена в любое время"
             )
             

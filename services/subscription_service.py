@@ -21,6 +21,11 @@ try:
 except ImportError:
     TelegramStarsService = None
 
+try:
+    from services.telegram_payments_service import TelegramPaymentsService
+except ImportError:
+    TelegramPaymentsService = None
+
 logger = logging.getLogger(__name__)
 
 class SubscriptionService:
@@ -36,19 +41,21 @@ class SubscriptionService:
         if TelegramStarsService and "telegram_stars" in settings.ENABLED_PAYMENT_PROVIDERS:
             self.payment_providers["telegram_stars"] = TelegramStarsService()
             
-        # PayPal
-        if PayPalService and "paypal" in settings.ENABLED_PAYMENT_PROVIDERS:
-            self.payment_providers["paypal"] = PayPalService()
-            
-        # Stripe
-        if StripeService and "stripe" in settings.ENABLED_PAYMENT_PROVIDERS:
-            self.payment_providers["stripe"] = StripeService()
+        # Telegram Payments (Redsys via BotFather)
+        if TelegramPaymentsService and "telegram_payments" in settings.ENABLED_PAYMENT_PROVIDERS:
+            self.payment_providers["telegram_payments"] = TelegramPaymentsService()
+
+        # Убираем PayPal и Stripe из доступных провайдеров
         
         # Определяем основной провайдер
         self.primary_provider = settings.PRIMARY_PAYMENT_PROVIDER
         if self.primary_provider not in self.payment_providers:
             # Если основной недоступен, берем первый доступный
-            self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
+            # Принудительно используем telegram_payments, если он доступен
+            if "telegram_payments" in self.payment_providers:
+                self.primary_provider = "telegram_payments"
+            else:
+                self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
         
         # Планы подписок - получаем из основного провайдера
         if self.primary_provider and self.primary_provider in self.payment_providers:
@@ -304,8 +311,7 @@ class SubscriptionService:
         """Получить отображаемое имя провайдера"""
         names = {
             "telegram_stars": "⭐ Telegram Stars",
-            "paypal": "💙 PayPal",
-            "stripe": "💳 Stripe"
+            "telegram_payments": "💳 Telegram Payments (Redsys)",
         }
         return names.get(provider, provider.title())
     
