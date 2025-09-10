@@ -38,7 +38,7 @@ class MessageHandler:
                 if subscription_check["reason"] == "subscription_required":
                     # Показываем планы подписки с выбором провайдера
                     plans = subscription_check["subscription_plans"]
-                    available_providers = self.subscription_service.get_available_providers()
+                    available_providers = ["crypto"]
                     
                     keyboard = []
                     
@@ -62,12 +62,8 @@ class MessageHandler:
                     
                     for provider in available_providers:
                         provider_name = self.subscription_service.get_provider_display_name(provider)
-                        if provider == "telegram_stars":
-                            message += f"• {provider_name} - внутренняя валюта Telegram\n"
-                        elif provider == "paypal":
-                            message += f"• {provider_name} - глобальная платежная система\n"
-                        elif provider == "stripe":
-                            message += f"• {provider_name} - карты Visa/Mastercard\n"
+                        if provider == "crypto":
+                            message += f"• {provider_name} - перевод TON или USDT (TRC20)\n"
                     
                     message += f"\nПосле оплаты вы сможете анализировать неограниченное количество фото!"
                     

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from models.data_models import Subscription, Payment, User
 from services.supabase_service import SupabaseService
+from services.crypto_service import CryptoService
 from config.settings import settings
 
 # Импортируем сервисы платежей
@@ -37,25 +38,14 @@ class SubscriptionService:
         # Инициализируем доступные провайдеры
         self.payment_providers = {}
         
-        # Telegram Stars
-        if TelegramStarsService and "telegram_stars" in settings.ENABLED_PAYMENT_PROVIDERS:
-            self.payment_providers["telegram_stars"] = TelegramStarsService()
-            
-        # Telegram Payments (Redsys via BotFather)
-        if TelegramPaymentsService and "telegram_payments" in settings.ENABLED_PAYMENT_PROVIDERS:
-            self.payment_providers["telegram_payments"] = TelegramPaymentsService()
-
-        # Убираем PayPal и Stripe из доступных провайдеров
+        # Только крипто-провайдер
+        if "crypto" in settings.ENABLED_PAYMENT_PROVIDERS:
+            self.payment_providers["crypto"] = CryptoService()
         
         # Определяем основной провайдер
         self.primary_provider = settings.PRIMARY_PAYMENT_PROVIDER
         if self.primary_provider not in self.payment_providers:
-            # Если основной недоступен, берем первый доступный
-            # Принудительно используем telegram_payments, если он доступен
-            if "telegram_payments" in self.payment_providers:
-                self.primary_provider = "telegram_payments"
-            else:
-                self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
+            self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
         
         # Планы подписок - получаем из основного провайдера
         if self.primary_provider and self.primary_provider in self.payment_providers:
@@ -310,8 +300,7 @@ class SubscriptionService:
     def get_provider_display_name(self, provider: str) -> str:
         """Получить отображаемое имя провайдера"""
         names = {
-            "telegram_stars": "⭐ Telegram Stars",
-            "telegram_payments": "💳 Telegram Payments (Redsys)",
+            "crypto": "🪙 Криптокошелёк (перевод)",
         }
         return names.get(provider, provider.title())
     

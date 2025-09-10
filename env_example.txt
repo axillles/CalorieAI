@@ -8,17 +8,16 @@ OPENAI_API_KEY=your_openai_api_key_here
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_KEY=your_supabase_anon_key_here
 
-# Stripe Configuration (получить в дашборде Stripe)
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+## Payments (Crypto only)
+# Включить только crypto провайдера
+ENABLED_PAYMENT_PROVIDERS=crypto
+PRIMARY_PAYMENT_PROVIDER=crypto
 
-# Stripe Price IDs (создать в дашборде Stripe)
-STRIPE_PRICE_ID_MONTHLY=price_...
-STRIPE_PRICE_ID_YEARLY=price_...
-
-# App URL для Stripe редиректов
-APP_URL=https://your-domain.com
+# Адреса кошельков (любые из списка)
+# TON (TG Wallet/TON Keeper/Bybit TON):
+CRYPTO_TON_ADDRESS=
+# USDT TRC20 (Bybit/OKX/Binance TRON сеть):
+CRYPTO_TRC20_USDT_ADDRESS=
 
 # G4F Fallback (опционально)
 ENABLE_G4F_FALLBACK=false

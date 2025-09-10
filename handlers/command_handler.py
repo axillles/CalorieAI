@@ -194,28 +194,19 @@ class CommandHandler:
             # Обработка подписок через конкретных провайдеров
             if data.startswith("subscribe_"):
                 # Правильный парсинг для telegram_stars который содержит подчеркивания
-                if "_monthly_telegram_stars" in data:
-                    plan_type = "monthly"
-                    provider = "telegram_stars"
-                elif "_yearly_telegram_stars" in data:
-                    plan_type = "yearly"
-                    provider = "telegram_stars"
-                elif "_monthly_telegram_payments" in data:
-                    plan_type = "monthly"
-                    provider = "telegram_payments"
-                elif "_yearly_telegram_payments" in data:
-                    plan_type = "yearly"
-                    provider = "telegram_payments"
+                parts = data.split("_")
+                if len(parts) >= 3:  # subscribe_monthly_provider
+                    plan_type = parts[1]
+                    provider = "_".join(parts[2:])
                 else:
-                    # Обычные провайдеры без подчеркиваний
-                    parts = data.split("_")
-                    if len(parts) >= 3:  # subscribe_monthly_provider
-                        plan_type = parts[1]
-                        provider = "_".join(parts[2:])  # поддержка provider с подчеркиваниями
-                    else:
-                        return
+                    return
                 
                 await self._handle_subscription_request(query, context, db_user, plan_type, provider)
+                return
+
+            if data.startswith("crypto_paid_"):
+                plan_type = data.split("_")[-1]
+                await self._handle_crypto_paid(query, db_user, plan_type)
                 return
                 
             if data == "subscription_stats":
@@ -254,12 +245,12 @@ class CommandHandler:
                 pass
 
     async def _show_provider_selection(self, query, db_user, plan_type: str):
-        """Показать выбор провайдера для оплаты"""
+        """Показать выбор провайдера для оплаты (только крипто)."""
         try:
             plans = self.subscription_service.get_subscription_plans()
             plan = plans.get(plan_type)
-            # Показываем только Telegram Payments
-            available_providers = ["telegram_payments"]
+            # Показываем только криптопровайдера
+            available_providers = ["crypto"]
             
             if not plan:
                 await query.edit_message_text("❌ Неизвестный план подписки")
@@ -267,17 +258,17 @@ class CommandHandler:
             
             keyboard = []
             
-            # Добавляем кнопки для каждого доступного провайдера
-            for provider in available_providers:
-                provider_name = self.subscription_service.get_provider_display_name(provider)
-                callback_data = f"subscribe_{plan_type}_{provider}"
-                keyboard.append([InlineKeyboardButton(provider_name, callback_data=callback_data)])
+            # Добавляем кнопку для криптооплаты
+            provider = "crypto"
+            provider_name = self.subscription_service.get_provider_display_name(provider)
+            callback_data = f"subscribe_{plan_type}_{provider}"
+            keyboard.append([InlineKeyboardButton(provider_name, callback_data=callback_data)])
             
             # Кнопка назад
             keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="subscription_stats")])
             
-            # Описание провайдеров
-            provider_descriptions = "• Telegram Payments (Redsys) - оплата банковской картой\n"
+            # Описание провайдера
+            provider_descriptions = "• Криптокошелёк — перевод TON или USDT (TRC20)\n"
             
             plan_name = "Месячная" if plan_type == "monthly" else "Годовая"
             
@@ -322,102 +313,55 @@ class CommandHandler:
             # Отправляем сообщение о обработке платежа
             loading_message = await query.edit_message_text("🔄 Обрабатываем запрос на оплату...")
             
-            if provider == "telegram_stars":
-                # Для Telegram Stars создаем инвойс напрямую
-                await self._handle_telegram_stars_payment(query, context, db_user, plan_type, plan)
-                return
-
-            if provider == "telegram_payments":
-                # Создаем инвойс через Telegram Payments provider_token (например Redsys)
-                tgpay_service = self.subscription_service.get_payment_service("telegram_payments")
-                if not tgpay_service:
-                    await query.edit_message_text("❌ Telegram Payments недоступен")
+            if provider == "crypto":
+                crypto_service = self.subscription_service.get_payment_service("crypto")
+                instructions = crypto_service.get_payment_instructions(plan_type)
+                if not instructions:
+                    await query.edit_message_text("❌ Криптокошелёк не настроен. Добавьте адрес в .env")
                     return
 
-                payload = await tgpay_service.create_invoice_payload(db_user.id, plan_type)
-                if not payload:
-                    await query.edit_message_text("❌ Ошибка создания инвойса")
-                    return
-
-                await context.bot.send_invoice(
-                    chat_id=query.message.chat_id,
-                    title=payload["title"],
-                    description=payload["description"],
-                    payload=payload["payload"],
-                    provider_token=payload["provider_token"],
-                    currency=payload["currency"],
-                    prices=payload["prices"],
-                    start_parameter=payload["start_parameter"],
-                )
-
-                keyboard = [[InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]]
+                keyboard = [
+                    [InlineKeyboardButton("✅ Я оплатил", callback_data=f"crypto_paid_{plan_type}")],
+                    [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
+                ]
                 await query.edit_message_text(
-                    text=(
-                        "💳 Инвойс отправлен в чат. Откройте счет и оплатите.\n\n"
-                        "• Для теста успеха: карта 4918010000000085\n"
-                        "• Для отклонения: карта 4918010000000051\n"
-                        "• Для 3DS/Challenge: 4548819407777774, 4918019199883839 или 4548814479727229 (сумма > 60€)"
-                    ),
+                    text=instructions,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
                 return
             
-            # Для остальных провайдеров создаем ссылку на оплату
-            payment_url = await self.subscription_service.create_payment_link(
-                user_id=db_user.id,
-                plan_type=plan_type,
-                telegram_user_id=query.from_user.id,
-                provider=provider
-            )
-            
-            if not payment_url:
-                await query.edit_message_text("❌ Ошибка создания ссылки на оплату. Попробуйте позже.")
-                return
-            
-            # Создаем клавиатуру со ссылкой на оплату
-            provider_name = self.subscription_service.get_provider_display_name(provider)
-            keyboard = [
-                [InlineKeyboardButton(f"💳 Оплатить через {provider_name}", url=payment_url)],
-                [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
-            ]
-            
-            # Безопасное получение данных плана
-            plan_name = plan.get('name', 'Подписка')
-            plan_price = plan.get('price', 4.99 if plan_type == 'monthly' else 49.99)
-            plan_currency = plan.get('currency', 'USD')
-            plan_duration = plan.get('duration_days', 30 if plan_type == 'monthly' else 365)
-            
-            message = (
-                f"💳 *{plan_name}*\n\n"
-                f"💰 Стоимость: ${plan_price} {plan_currency}\n"
-                f"📅 Длительность: {plan_duration} дней\n"
-                f"📸 Фото: Безлимит\n\n"
-                f"ℹ️ *Как оплатить:*\n"
-            )
-            
-            if provider == "telegram_payments":
-                message += (
-                    f"1. Откройте отправленный инвойс 'Оплатить'\n"
-                    f"2. Введите тестовые данные карты\n"
-                    f"3. При сумме > 60€ можно проверить 3DS-челлендж\n"
-                    f"4. После оплаты подписка активируется автоматически!\n\n"
-                    f"🔒 *Безопасность:* Оплата обрабатывается провайдером Telegram (например, Redsys)\n"
-                    f"🔄 *Подписка:* Продлевается автоматически каждые {plan_duration} дней\n"
-                    f"❌ *Отмена:* Можно отменить в любое время"
-                )
-            else:
-                message += "Провайдер не поддерживается."
-            
-            await query.edit_message_text(
-                text=message,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            # Прочие провайдеры не поддерживаются
+            await query.edit_message_text("❌ Провайдер не поддерживается")
             
         except Exception as e:
             logger.error(f"Ошибка обработки подписки: {e}")
             await query.edit_message_text("❌ Ошибка обработки подписки")
+
+    async def _handle_crypto_paid(self, query, db_user, plan_type: str):
+        try:
+            crypto_service = self.subscription_service.get_payment_service("crypto")
+            # Активируем по подтверждению пользователя (при желании можно запросить TX-хеш отдельно)
+            success = await crypto_service.activate_after_user_confirm(db_user.id, plan_type)
+            if success:
+                keyboard = [
+                    [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
+                    [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")],
+                ]
+                await query.edit_message_text(
+                    text=(
+                        "✅ Подписка активирована!\n\n"
+                        "Спасибо за оплату переводом на криптокошелёк.\n"
+                        "Если вы не совершали платеж — напишите в поддержку."
+                    ),
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                return
+            await query.edit_message_text("❌ Не удалось активировать подписку. Попробуйте позже.")
+        except Exception as e:
+            logger.error(f"Crypto paid error: {e}")
+            await query.edit_message_text("❌ Ошибка обработки оплаты")
     
     async def _handle_telegram_stars_payment(self, query, context: ContextTypes.DEFAULT_TYPE, db_user, plan_type: str, plan: dict):
         """Обработка оплаты через Telegram Stars"""

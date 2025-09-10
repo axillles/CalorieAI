@@ -45,8 +45,8 @@ class Settings:
     PAYPAL_BASE_URL = os.getenv("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com")  # sandbox по умолчанию
     
     # Payment Provider Settings
-    ENABLED_PAYMENT_PROVIDERS = os.getenv("ENABLED_PAYMENT_PROVIDERS", "telegram_payments").split(",")
-    PRIMARY_PAYMENT_PROVIDER = os.getenv("PRIMARY_PAYMENT_PROVIDER", "telegram_payments")
+    ENABLED_PAYMENT_PROVIDERS = os.getenv("ENABLED_PAYMENT_PROVIDERS", "crypto").split(",")
+    PRIMARY_PAYMENT_PROVIDER = os.getenv("PRIMARY_PAYMENT_PROVIDER", "crypto")
     
     # App URL for Stripe redirects
     APP_URL = os.getenv("APP_URL", "https://your-domain.com")
@@ -54,9 +54,9 @@ class Settings:
     # Subscription settings
     FREE_PHOTO_LIMIT = 1  # First photo is free
 
-    # Telegram Payments (Redsys/BotFather provider)
-    PAYMENT_PROVIDER_TOKEN = os.getenv("PAYMENT_PROVIDER_TOKEN")
-    PAYMENT_PROVIDER_NAME = os.getenv("PAYMENT_PROVIDER_NAME", "telegram_payments")
-    TELEGRAM_PAYMENTS_CURRENCY = os.getenv("TELEGRAM_PAYMENTS_CURRENCY", "EUR")
+    # Crypto payments (manual wallet transfer)
+    CRYPTO_TON_ADDRESS = os.getenv("CRYPTO_TON_ADDRESS")
+    CRYPTO_TRC20_USDT_ADDRESS = os.getenv("CRYPTO_TRC20_USDT_ADDRESS")
+    PAYMENT_PROVIDER_NAME = "crypto"
 
 settings = Settings()
