@@ -21,14 +21,14 @@ class MessageHandler:
         self.subscription_service = SubscriptionService()
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик фотографий"""
+        """Photo processor"""
         try:
             user = update.effective_user
             
             # Получаем пользователя из БД
             db_user = await self.supabase_service.get_user_by_telegram_id(user.id)
             if not db_user:
-                await update.message.reply_text("❌ Пользователь не найден. Используйте /start для регистрации.")
+                await update.message.reply_text("❌ User not found. Please use /start to register.")
                 return
             
             # Проверяем подписку перед анализом
@@ -43,39 +43,39 @@ class MessageHandler:
                     keyboard = []
                     
                     # Короткие кнопки для планов
-                    keyboard.append([InlineKeyboardButton("💳 Месячная подписка", callback_data="choose_monthly")])
-                    keyboard.append([InlineKeyboardButton("💰 Годовая подписка", callback_data="choose_yearly")])
-                    keyboard.append([InlineKeyboardButton("📊 Статистика использования", callback_data="subscription_stats")])
+                    keyboard.append([InlineKeyboardButton("💳 Monthly subscription", callback_data="choose_monthly")])
+                    keyboard.append([InlineKeyboardButton("💰 Annual subscription", callback_data="choose_yearly")])
+                    keyboard.append([InlineKeyboardButton("📊 Usage statistics", callback_data="subscription_stats")])
                     
                     # Безопасное получение цен с fallback значениями
                     monthly_price = plans.get('monthly', {}).get('price', 4.99)
                     yearly_price = plans.get('yearly', {}).get('price', 49.99)
                     
                     message = (
-                        f"⚠️ *Лимит бесплатных фото исчерпан!*\n\n"
-                        f"Вы проанализировали: {subscription_check['photos_analyzed']} фото\n\n"
-                        f"💡 *Выберите план подписки:*\n\n"
-                        f"💳 **Месячная:** ${monthly_price} - безлимит фото\n"
-                        f"💰 **Годовая:** ${yearly_price} - безлимит фото (экономия 17%)\n\n"
-                        f"💳 *Доступные способы оплаты:*\n"
+                        f"⚠️ *The limit of free photos has been reached!*\n\n"
+                        f"You have analyzed: {subscription_check['photos_analyzed']} фото\n\n"
+                        f"💡 *Select a subscription plan:*\n\n"
+                        f"💳 **Monthly:** ${monthly_price} - unlimited photo\n"
+                        f"💰 **Annual:** ${yearly_price} - unlimited photos (save 17%)\n\n"
+                        f"💳 *Available payment methods:*\n"
                     )
                     
                     for provider in available_providers:
                         provider_name = self.subscription_service.get_provider_display_name(provider)
                         if provider == "crypto":
-                            message += f"• {provider_name} - перевод TON или USDT (TRC20)\n"
+                            message += f"• {provider_name} - transaction TON or USDT (TRC20)\n"
                     
-                    message += f"\nПосле оплаты вы сможете анализировать неограниченное количество фото!"
+                    message += f"\nAfter payment you will be able to analyze an unlimited number of photos!"
                     
                     await update.message.reply_text(message, parse_mode='Markdown', 
                                                  reply_markup=InlineKeyboardMarkup(keyboard))
                     return
                 else:
-                    await update.message.reply_text("❌ Ошибка проверки подписки. Попробуйте позже.")
+                    await update.message.reply_text("❌ Error checking subscription. Try again later.")
                     return
             
-            # Отправляем сообщение о начале обработки
-            processing_msg = await update.message.reply_text("🔍 Анализирую изображение...")
+            # Send processing message (English)
+            processing_msg = await update.message.reply_text("🔍 Analyzing image...")
             
             # Получаем фотографию
             photo = update.message.photo[-1]  # Берем самое большое изображение
@@ -126,13 +126,15 @@ class MessageHandler:
                     'protein': nutrition_analysis.protein,
                     'fats': nutrition_analysis.fats,
                     'carbs': nutrition_analysis.carbs,
-                    'confidence': nutrition_analysis.confidence
+                    'weight_grams': nutrition_analysis.weight_grams
                 })
                 
-                # Кнопки после анализа
+                # Buttons after analysis
+                tg_weight = int(nutrition_analysis.weight_grams) if nutrition_analysis.weight_grams else 200
                 keyboard = [
-                    [InlineKeyboardButton(text="➕ Вода +250мл", callback_data="water_add_250")],
-                    [InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]
+                    [InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")],
+                    [InlineKeyboardButton(text=f"⚖️ Change weight ({tg_weight} g)", callback_data=f"change_weight_{created_image.id}_{tg_weight}")],
+                    [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
                 ]
                 # Увеличиваем счетчик проанализированных фото
                 await self.subscription_service.increment_photos_analyzed(user.id)
@@ -142,7 +144,7 @@ class MessageHandler:
                 await update.message.reply_text(result_message, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
                 
             except OpenAIQuotaError:
-                logger.error("Анализ прерван: исчерпана квота OpenAI")
+                logger.error("Analysis stopped: OpenAI quota exceeded")
                 # Если включен фолбэк g4f — пробуем анализ по URL
                 if self.g4f_service:
                     fallback_result = self.g4f_service.analyze_food_image_url(image_url)
@@ -168,24 +170,30 @@ class MessageHandler:
                             'confidence': fallback_result.confidence
                         })
                         keyboard = [
-                            [InlineKeyboardButton(text="➕ Вода +250мл", callback_data="water_add_250")],
-                            [InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]
+                            [InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")],
+                            [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
                         ]
                         await processing_msg.delete()
                         await update.message.reply_text(result_message, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
                         return
                 await self.supabase_service.update_food_image_status(created_image.id, "error")
                 await processing_msg.delete()
-                await update.message.reply_text("⚠️ Превышена квота OpenAI. Попробуйте позже или проверьте биллинг API.")
+                await update.message.reply_text("⚠️ OpenAI quota exceeded. Try again later or check API billing.")
             except Exception as e:
-                logger.error(f"Ошибка анализа изображения: {e}")
+                logger.error(f"Image analysis error: {e}")
                 await self.supabase_service.update_food_image_status(created_image.id, "error")
                 await processing_msg.delete()
-                await update.message.reply_text("❌ Ошибка при анализе изображения. Попробуйте еще раз.")
+                await update.message.reply_text("❌ Image analysis error. Please try again.")
                 
         except Exception as e:
-            logger.error(f"Ошибка обработки фотографии: {e}")
-            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            logger.error(f"Photo handling error: {e}")
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
+            ])
+            await update.message.reply_text(
+                "❌ An error occurred. Please try again later.",
+                reply_markup=keyboard
+            )
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
@@ -196,18 +204,66 @@ class MessageHandler:
                 # Команды обрабатываются в command_handler
                 return
             
-            # Если это не команда, отправляем подсказку
+            # Handle weight input if awaiting
+            awaiting_image_id = context.user_data.get("awaiting_weight_for_image")
+            if awaiting_image_id is not None:
+                try:
+                    new_weight = int(''.join(ch for ch in text if ch.isdigit()))
+                    if new_weight <= 0:
+                        raise ValueError
+                    nd = self.supabase_service.supabase.table("nutrition_data").select("id, calories, protein, fats, carbs, weight_grams").eq("food_image_id", awaiting_image_id).order("created_at", desc=True).limit(1).execute()
+                    if nd.data:
+                        row = nd.data[0]
+                        old_w = row.get("weight_grams") or new_weight
+                        factor = new_weight / old_w if old_w else 1
+                        updated = {
+                            "calories": round(row["calories"] * factor, 1),
+                            "protein": round(row["protein"] * factor, 1),
+                            "fats": round(row["fats"] * factor, 1),
+                            "carbs": round(row["carbs"] * factor, 1),
+                            "weight_grams": new_weight,
+                        }
+                        self.supabase_service.supabase.table("nutrition_data").update(updated).eq("id", row["id"]).execute()
+                        img = self.supabase_service.supabase.table("food_images").select("user_id").eq("id", awaiting_image_id).single().execute()
+                        user_id = img.data["user_id"] if img and img.data else None
+                        if user_id:
+                            await self._update_daily_report(user_id)
+                        await update.message.reply_text(
+                            f"✅ Weight updated to {new_weight} g. Nutrition recalculated.",
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
+                        )
+                    else:
+                        await update.message.reply_text(
+                            "❌ Could not find analysis for this image.",
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
+                        )
+                except Exception:
+                    await update.message.reply_text(
+                        "❌ Please send a valid integer weight in grams.",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
+                    )
+                finally:
+                    context.user_data.pop("awaiting_weight_for_image", None)
+                return
+            
+            # If not a command, send a hint (English)
             await update.message.reply_text(
-                "📸 Отправьте мне фотографию еды для анализа КБЖУ!\n\n"
-                "Или используйте команды:\n"
-                "/stats - статистика за день\n"
-                "/week - статистика за неделю\n"
-                "/help - справка"
+                "📸 Send a photo of your meal to analyze nutrition!\n\n"
+                "Or use commands:\n"
+                "/stats - today stats\n"
+                "/week - weekly stats\n"
+                "/help - help"
             )
             
         except Exception as e:
-            logger.error(f"Ошибка обработки текстового сообщения: {e}")
-            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            logger.error(f"Text handling error: {e}")
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
+            ])
+            await update.message.reply_text(
+                "❌ An error occurred. Please try again later.",
+                reply_markup=keyboard
+            )
     
     async def _update_daily_report(self, user_id: int):
         """Обновить дневной отчет пользователя"""

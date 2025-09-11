@@ -23,14 +23,14 @@ class CryptoService:
         # Базовые планы в USD
         self.subscription_plans: Dict[str, Dict[str, Any]] = {
             "monthly": {
-                "name": "Месячная подписка",
+                "name": "Monthly subscription",
                 "price": 4.99,
                 "currency": "USD",
                 "duration_days": 30,
                 "photos_limit": -1,
             },
             "yearly": {
-                "name": "Годовая подписка",
+                "name": "Yearly subscription",
                 "price": 49.99,
                 "currency": "USD",
                 "duration_days": 365,
@@ -42,7 +42,7 @@ class CryptoService:
         return self.subscription_plans
 
     def get_provider_display_name(self) -> str:
-        return "🪙 Криптокошелёк (перевод)"
+        return "🪙 Crypto wallet (transfer)"
 
     def get_payment_instructions(self, plan_type: str) -> Optional[str]:
         plan = self.subscription_plans.get(plan_type)
@@ -56,10 +56,9 @@ class CryptoService:
             return None
 
         lines = [
-            f"🪙 Оплата подписки: {plan['name']}",
-            f"💰 Сумма: ${plan['price']} {plan['currency']}",
-            "\nПереведите эквивалент в криптовалюте на один из адресов:
-",
+            f"🪙 Subscription payment: {plan['name']}",
+            f"💰 Amount: ${plan['price']} {plan['currency']}",
+            "\nSend the equivalent in crypto to one of the addresses:",
         ]
 
         if ton_addr:
@@ -68,8 +67,8 @@ class CryptoService:
             lines.append(f"• USDT (TRC20): `{trc20_addr}`")
 
         lines.extend([
-            "\nПосле перевода нажмите кнопку \"✅ Я оплатил\" ниже.",
-            "Если нужно, пришлите хеш транзакции этим же сообщением.",
+            "\nAfter transfer, press \"✅ I have paid\" below.",
+            "If needed, send the transaction hash in this chat.",
         ])
 
         return "\n".join(lines)

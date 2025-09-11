@@ -6,27 +6,6 @@ from services.supabase_service import SupabaseService
 from services.crypto_service import CryptoService
 from config.settings import settings
 
-# Импортируем сервисы платежей
-try:
-    from services.stripe_service import StripeService
-except ImportError:
-    StripeService = None
-
-try:
-    from services.paypal_service import PayPalService
-except ImportError:
-    PayPalService = None
-
-try:
-    from services.telegram_stars_service import TelegramStarsService
-except ImportError:
-    TelegramStarsService = None
-
-try:
-    from services.telegram_payments_service import TelegramPaymentsService
-except ImportError:
-    TelegramPaymentsService = None
-
 logger = logging.getLogger(__name__)
 
 class SubscriptionService:
@@ -47,26 +26,13 @@ class SubscriptionService:
         if self.primary_provider not in self.payment_providers:
             self.primary_provider = list(self.payment_providers.keys())[0] if self.payment_providers else None
         
-        # Планы подписок - получаем из основного провайдера
+        # Планы подписок
         if self.primary_provider and self.primary_provider in self.payment_providers:
             self.subscription_plans = self.payment_providers[self.primary_provider].get_subscription_plans()
         else:
-            # Запасные планы
             self.subscription_plans = {
-                "monthly": {
-                    "name": "Месячная подписка",
-                    "price": 4.99,
-                    "currency": "USD",
-                    "duration_days": 30,
-                    "photos_limit": -1
-                },
-                "yearly": {
-                    "name": "Годовая подписка",
-                    "price": 49.99,
-                    "currency": "USD",
-                    "duration_days": 365,
-                    "photos_limit": -1
-                }
+                "monthly": {"name": "Monthly", "price": 4.99, "currency": "USD", "duration_days": 30, "photos_limit": -1},
+                "yearly": {"name": "Yearly", "price": 49.99, "currency": "USD", "duration_days": 365, "photos_limit": -1}
             }
     
     async def can_analyze_photo(self, user_id: int) -> Dict[str, Any]:
@@ -127,7 +93,10 @@ class SubscriptionService:
         except Exception as e:
             logger.error(f"Ошибка проверки возможности анализа: {e}")
             # В случае ошибки разрешаем бесплатное фото для отладки
-            return {"can_analyze": True, "reason": "error_fallback"}
+            return {
+                "can_analyze": True,
+                "reason": "error_fallback"
+            }
     
     async def increment_photos_analyzed(self, telegram_user_id: int) -> bool:
         """Увеличить счетчик проанализированных фото"""
@@ -170,21 +139,9 @@ class SubscriptionService:
             # Создаем платеж через соответствующий сервис
             payment_service = self.payment_providers[provider]
             
-            if provider == "stripe":
-                payment_url = await payment_service.create_checkout_session(
-                    user_id=user_id,
-                    plan_type=plan_type,
-                    telegram_user_id=telegram_user_id
-                )
-            elif provider == "paypal":
-                payment_url = await payment_service.create_subscription_payment(
-                    user_id=user_id,
-                    plan_type=plan_type,
-                    telegram_user_id=telegram_user_id
-                )
-            elif provider == "telegram_stars":
-                # Для Telegram Stars нет прямой ссылки - они обрабатываются через инвойс
-                return "telegram_stars_invoice_required"
+            if provider == "crypto":
+                # Для крипто-провайдера нет прямой ссылки на оплату, она обрабатывается через инвойс
+                return "crypto_invoice_required"
             else:
                 logger.error(f"Неподдерживаемый провайдер: {provider}")
                 return None
@@ -208,10 +165,10 @@ class SubscriptionService:
                 return None
             
             # Если у пользователя есть Stripe подписка, получаем актуальную информацию
-            if user.stripe_subscription_id:
-                stripe_info = await self.stripe_service.get_subscription_info(user_id)
-                if stripe_info:
-                    return stripe_info
+            # if user.stripe_subscription_id:
+            #     stripe_info = await self.stripe_service.get_subscription_info(user_id)
+            #     if stripe_info:
+            #         return stripe_info
             
             # Иначе возвращаем информацию из нашей БД
             return {
@@ -230,7 +187,9 @@ class SubscriptionService:
     async def cancel_subscription(self, user_id: int) -> bool:
         """Отменить подписку пользователя"""
         try:
-            return await self.stripe_service.cancel_subscription(user_id)
+            # if self.stripe_service: # This line was removed as per the edit hint
+            #     return await self.stripe_service.cancel_subscription(user_id)
+            return False # Assuming no direct cancellation for crypto
         except Exception as e:
             logger.error(f"Ошибка отмены подписки: {e}")
             return False
@@ -300,7 +259,7 @@ class SubscriptionService:
     def get_provider_display_name(self, provider: str) -> str:
         """Получить отображаемое имя провайдера"""
         names = {
-            "crypto": "🪙 Криптокошелёк (перевод)",
+            "crypto": "🪙 Crypto wallet (transfer)",
         }
         return names.get(provider, provider.title())
     

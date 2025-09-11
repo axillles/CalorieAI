@@ -92,7 +92,8 @@ class SupabaseService:
                 "fats": nutrition_data.fats,
                 "carbs": nutrition_data.carbs,
                 "food_name": nutrition_data.food_name,
-                "confidence": nutrition_data.confidence
+                "confidence": nutrition_data.confidence,
+                "weight_grams": nutrition_data.weight_grams
             }
             
             result = self.supabase.table("nutrition_data").insert(data).execute()

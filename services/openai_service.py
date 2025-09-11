@@ -51,31 +51,23 @@ class OpenAIService:
         return base64.b64encode(image_bytes).decode('utf-8')
     
     def _create_prompt(self) -> str:
-        """Создать промпт для анализа изображения"""
+        """Create English prompt for analysis with estimated weight and no confidence to user."""
         return """
-        Проанализируй это изображение еды и определи примерные значения КБЖУ (калории, белки, жиры, углеводы).
-        
-        Верни ответ ТОЛЬКО в формате JSON без дополнительного текста:
+        Analyze this meal photo and estimate macronutrients and portion weight.
+
+        Return ONLY JSON with no extra text:
         {
-            "calories": число (калории),
-            "protein": число (белки в граммах),
-            "fats": число (жиры в граммах),
-            "carbs": число (углеводы в граммах),
-            "food_name": "название блюда или продукта",
-            "confidence": число от 0 до 1 (уверенность в анализе)
+          "calories": number (kcal),
+          "protein": number (grams),
+          "fats": number (grams),
+          "carbs": number (grams),
+          "food_name": "dish name in English",
+          "weight_grams": number (approximate portion weight in grams),
+          "confidence": number from 0 to 1
         }
-        
-        Если на изображении нет еды или ты не можешь определить, что это, верни:
-        {
-            "calories": 0,
-            "protein": 0,
-            "fats": 0,
-            "carbs": 0,
-            "food_name": "неизвестно",
-            "confidence": 0
-        }
-        
-        Оценивай порцию реалистично. Если видишь готовое блюдо, оценивай его как целую порцию.
+
+        If there is no food, return zeros and food_name = "unknown".
+        Be realistic about portion size.
         """
     
     def analyze_food_image(self, image_bytes: bytes) -> NutritionAnalysis:
@@ -134,11 +126,12 @@ class OpenAIService:
                     protein=float(nutrition_data.get('protein', 0)),
                     fats=float(nutrition_data.get('fats', 0)),
                     carbs=float(nutrition_data.get('carbs', 0)),
-                    food_name=str(nutrition_data.get('food_name', 'неизвестно')),
-                    confidence=float(nutrition_data.get('confidence', 0))
+                    food_name=str(nutrition_data.get('food_name', 'unknown')),
+                    confidence=float(nutrition_data.get('confidence', 0)),
+                    weight_grams=float(nutrition_data.get('weight_grams', 0)) if nutrition_data.get('weight_grams') is not None else None
                 )
                 
-                logger.info(f"Успешный анализ изображения: {nutrition_analysis.food_name}")
+                logger.info(f"Successful image analysis: {nutrition_analysis.food_name}")
                 return nutrition_analysis
                 
             except (json.JSONDecodeError, ValueError, KeyError) as e:

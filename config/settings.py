@@ -59,4 +59,10 @@ class Settings:
     CRYPTO_TRC20_USDT_ADDRESS = os.getenv("CRYPTO_TRC20_USDT_ADDRESS")
     PAYMENT_PROVIDER_NAME = "crypto"
 
+    # TRC20 monitor settings
+    ENABLE_TRC20_MONITOR = os.getenv("ENABLE_TRC20_MONITOR", "true").lower() in ("1", "true", "yes")
+    TRONGRID_API_KEY = os.getenv("TRONGRID_API_KEY")
+    TRC20_CONFIRMATIONS_REQUIRED = int(os.getenv("TRC20_CONFIRMATIONS_REQUIRED", "1"))
+    TRC20_AMOUNT_TOLERANCE_USD = float(os.getenv("TRC20_AMOUNT_TOLERANCE_USD", "0.5"))
+
 settings = Settings()

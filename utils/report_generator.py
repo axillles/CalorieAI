@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 class ReportGenerator:
     @staticmethod
     def format_daily_report(nutrition_data: Dict[str, float], user_goals: Dict[str, int] = None) -> str:
-        """Форматировать дневной отчет"""
+        """Format daily nutrition report"""
         try:
             calories = nutrition_data.get('calories', 0)
             protein = nutrition_data.get('protein', 0)
@@ -36,31 +36,31 @@ class ReportGenerator:
             carbs_bar = ReportGenerator._create_progress_bar(carbs_percent)
             
             report = f"""
-📊 *Дневной отчет питания*
+📊 *Daily Nutrition Report*
 
-🍽️ **Калории:** {calories:.0f} / {user_goals['calories']} ккал ({calories_percent:.1f}%)
+🍽️ **Calories:** {calories:.0f} / {user_goals['calories']} kcal ({calories_percent:.1f}%)
 {calories_bar}
 
-🥩 **Белки:** {protein:.1f} / {user_goals['protein']}г ({protein_percent:.1f}%)
+🥩 **Protein:** {protein:.1f} / {user_goals['protein']} g ({protein_percent:.1f}%)
 {protein_bar}
 
-🧈 **Жиры:** {fats:.1f} / {user_goals['fats']}г ({fats_percent:.1f}%)
+🧈 **Fats:** {fats:.1f} / {user_goals['fats']} g ({fats_percent:.1f}%)
 {fats_bar}
 
-🍞 **Углеводы:** {carbs:.1f} / {user_goals['carbs']}г ({carbs_percent:.1f}%)
+🍞 **Carbs:** {carbs:.1f} / {user_goals['carbs']} g ({carbs_percent:.1f}%)
 {carbs_bar}
 
-📅 Дата: {date.today().strftime('%d.%m.%Y')}
+📅 Date: {date.today().strftime('%Y-%m-%d')}
 """
             return report.strip()
             
         except Exception as e:
-            logger.error(f"Ошибка форматирования дневного отчета: {e}")
-            return "❌ Ошибка генерации отчета"
+            logger.error(f"Daily report formatting error: {e}")
+            return "❌ Report generation error"
     
     @staticmethod
     def format_weekly_report(week_data: Dict[str, float], user_goals: Dict[str, int] = None) -> str:
-        """Форматировать недельный отчет"""
+        """Format weekly nutrition report"""
         try:
             total_calories = week_data.get('total_calories', 0)
             total_protein = week_data.get('total_protein', 0)
@@ -94,67 +94,69 @@ class ReportGenerator:
             avg_carbs_bar = ReportGenerator._create_progress_bar(avg_carbs_percent)
             
             report = f"""
-📈 *Недельный отчет питания*
+📈 *Weekly Nutrition Report*
 
-📊 **Общие показатели за неделю:**
-🍽️ Калории: {total_calories:.0f} ккал
-🥩 Белки: {total_protein:.1f}г
-🧈 Жиры: {total_fats:.1f}г
-🍞 Углеводы: {total_carbs:.1f}г
+📊 **Totals for the week:**
+🍽️ Calories: {total_calories:.0f} kcal
+🥩 Protein: {total_protein:.1f} g
+🧈 Fats: {total_fats:.1f} g
+🍞 Carbs: {total_carbs:.1f} g
 
-📅 **Средние показатели в день:**
-🍽️ **Калории:** {avg_calories:.0f} / {user_goals['calories']} ккал ({avg_calories_percent:.1f}%)
+📅 **Daily averages:**
+🍽️ **Calories:** {avg_calories:.0f} / {user_goals['calories']} kcal ({avg_calories_percent:.1f}%)
 {avg_calories_bar}
 
-🥩 **Белки:** {avg_protein:.1f} / {user_goals['protein']}г ({avg_protein_percent:.1f}%)
+🥩 **Protein:** {avg_protein:.1f} / {user_goals['protein']} g ({avg_protein_percent:.1f}%)
 {avg_protein_bar}
 
-🧈 **Жиры:** {avg_fats:.1f} / {user_goals['fats']}г ({avg_fats_percent:.1f}%)
+🧈 **Fats:** {avg_fats:.1f} / {user_goals['fats']} g ({avg_fats_percent:.1f}%)
 {avg_fats_bar}
 
-🍞 **Углеводы:** {avg_carbs:.1f} / {user_goals['carbs']}г ({avg_carbs_percent:.1f}%)
+🍞 **Carbs:** {avg_carbs:.1f} / {user_goals['carbs']} g ({avg_carbs_percent:.1f}%)
 {avg_carbs_bar}
 
-📅 Период: {date.today().strftime('%d.%m.%Y')}
+📅 Period end: {date.today().strftime('%Y-%m-%d')}
 """
             return report.strip()
             
         except Exception as e:
-            logger.error(f"Ошибка форматирования недельного отчета: {e}")
-            return "❌ Ошибка генерации отчета"
+            logger.error(f"Weekly report formatting error: {e}")
+            return "❌ Report generation error"
     
     @staticmethod
     def format_nutrition_result(nutrition_data: Dict[str, Any]) -> str:
-        """Форматировать результат анализа одного изображения"""
+        """Format single image analysis result"""
         try:
-            food_name = nutrition_data.get('food_name', 'неизвестно')
+            food_name = nutrition_data.get('food_name', 'unknown')
             calories = nutrition_data.get('calories', 0)
             protein = nutrition_data.get('protein', 0)
             fats = nutrition_data.get('fats', 0)
             carbs = nutrition_data.get('carbs', 0)
-            confidence = nutrition_data.get('confidence', 0)
+            weight_grams = nutrition_data.get('weight_grams')
             
             confidence_emoji = "🟢" if confidence > 0.7 else "🟡" if confidence > 0.4 else "🔴"
             
+            weight_line = f"⚖️ Weight: {weight_grams:.0f} g\n" if weight_grams else ""
             result = f"""
-🍽️ *Анализ завершен!*
+🍽️ *Analysis complete!*
 
-📝 **Блюдо:** {food_name}
-{confidence_emoji} **Уверенность:** {confidence:.1%}
+📝 **Dish:** {food_name}
 
-📊 **Питательная ценность:**
-🍽️ Калории: {calories:.0f} ккал
-🥩 Белки: {protein:.1f}г
-🧈 Жиры: {fats:.1f}г
-🍞 Углеводы: {carbs:.1f}г
+📊 **Nutrition (estimated):**
+🍽️ Calories: {calories:.0f} kcal
+🥩 Protein: {protein:.1f} g
+🧈 Fats: {fats:.1f} g
+🍞 Carbs: {carbs:.1f} g
 
-✅ Данные сохранены в ваш дневник!
+{weight_line}
+
+✅ Saved to your diary!
 """
             return result.strip()
             
         except Exception as e:
-            logger.error(f"Ошибка форматирования результата анализа: {e}")
-            return "❌ Ошибка форматирования результата"
+            logger.error(f"Analysis result formatting error: {e}")
+            return "❌ Formatting error"
 
     @staticmethod
     def format_water_status(today_ml: int, goal_ml: int) -> str:
@@ -162,16 +164,16 @@ class ReportGenerator:
             percent = min((today_ml / goal_ml) * 100, 100) if goal_ml else 0
             bar = ReportGenerator._create_progress_bar(percent)
             return (
-                f"💧 Вода за сегодня: {today_ml} / {goal_ml} мл ({percent:.0f}%)\n{bar}"
+                f"💧 Water today: {today_ml} / {goal_ml} ml ({percent:.0f}%)\n{bar}"
             )
         except Exception:
             return "💧 Вода: ошибка расчета"
 
     @staticmethod
     def format_weekly_water(bars: Dict[str, int]) -> str:
-        """Простой график воды по дням недели: { 'Пн': 1500, ... }"""
+        """Simple weekly water chart: { 'Mon': 1500, ... }"""
         try:
-            lines = ["📈 Вода за неделю:"]
+            lines = ["📈 Weekly water:"]
             max_ml = max(bars.values()) if bars else 0
             scale = max(1, max_ml // 10) if max_ml else 1
             for day, ml in bars.items():
@@ -179,11 +181,11 @@ class ReportGenerator:
                 lines.append(f"{day}: " + ("█" * int(blocks)))
             return "\n".join(lines)
         except Exception:
-            return "📈 Вода за неделю: ошибка отображения"
+            return "📈 Weekly water: display error"
     
     @staticmethod
     def _create_progress_bar(percentage: float, length: int = 10) -> str:
-        """Создать текстовый прогресс-бар"""
+        """Create a text progress bar"""
         try:
             filled_length = int((percentage / 100) * length)
             bar = "█" * filled_length + "░" * (length - filled_length)
@@ -193,54 +195,52 @@ class ReportGenerator:
     
     @staticmethod
     def get_welcome_message() -> str:
-        """Получить приветственное сообщение"""
+        """Get welcome message (English)"""
         return """
-🤖 *Добро пожаловать в КБЖУ Анализатор!*
+🤖 *Welcome to the Nutrition Analyzer!*
 
-Я помогу вам отслеживать ваше питание. Просто отправьте мне фотографию еды, и я проанализирую её калорийность и состав.
+Send a photo of your meal and I will estimate calories, protein, fats and carbs.
 
-📋 **Доступные команды:**
-/start - Начать работу
-/stats - Статистика за сегодня
-/week - Статистика за неделю
-/help - Справка
+📋 **Commands:**
+/start - Start
+/stats - Today stats
+/week - Weekly stats
+/help - Help
 
-📸 **Как использовать:**
-1. Сфотографируйте вашу еду
-2. Отправьте фото мне
-3. Получите анализ КБЖУ
-4. Просматривайте статистику
+📸 **How to use:**
+1. Take a photo of your meal
+2. Send it here
+3. Get the nutrition analysis
+4. Track your progress
 
-Начните прямо сейчас - отправьте фото еды! 🍽️
+Send your first photo now! 🍽️
 """
     
     @staticmethod
     def get_help_message() -> str:
-        """Получить сообщение справки"""
+        """Get help message (English)"""
         return """
-📖 *Справка по использованию*
+📖 *Help*
 
-🤖 **Основные функции:**
-• Анализ КБЖУ по фотографиям еды
-• Отслеживание дневного потребления
-• Недельная статистика
-• Персональные цели питания
+🤖 **Features:**
+• Vision-based nutrition analysis
+• Daily and weekly stats
+• Personal goals
 
-📸 **Отправка фотографий:**
-• Поддерживаемые форматы: JPG, PNG, WEBP
-• Максимальный размер: 20MB
-• Фотографируйте еду в хорошем освещении
+📸 **Images:**
+• Formats: JPG, PNG, WEBP
+• Max size: 20MB
+• Good lighting recommended
 
-📊 **Команды:**
-/stats - Показать статистику за сегодня
-/week - Показать статистику за неделю
-/help - Показать эту справку
+📊 **Commands:**
+/stats - Today stats
+/week - Weekly stats
+/help - This help
 
-💡 **Советы для лучшего анализа:**
-• Фотографируйте еду сверху
-• Убедитесь в хорошем освещении
-• Покажите всю порцию целиком
-• Избегайте размытых снимков
+💡 **Tips:**
+• Shoot from top
+• Ensure good lighting
+• Include the whole portion
 
-❓ **Есть вопросы?** Обратитесь к разработчику.
+❓ Questions? Contact support.
 """

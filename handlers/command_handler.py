@@ -14,6 +14,18 @@ class CommandHandler:
         self.supabase_service = SupabaseService()
         self.subscription_service = SubscriptionService()
     
+    async def _show_main_menu(self, query_or_update, use_edit: bool = True):
+        keyboard = [
+            [InlineKeyboardButton(text="📊 Today: calories/water", callback_data="menu_day")],
+            [InlineKeyboardButton(text="📈 Week: graph", callback_data="menu_week")],
+            [InlineKeyboardButton(text="⚙️ Water settings", callback_data="menu_settings_water")],
+        ]
+        text = "📋 *Main menu*\n\nChoose a section:"
+        if use_edit and getattr(query_or_update, 'edit_message_text', None):
+            await query_or_update.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await query_or_update.message.reply_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+    
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
@@ -33,14 +45,14 @@ class CommandHandler:
             
             welcome_message = ReportGenerator.get_welcome_message()
             keyboard = [
-                [InlineKeyboardButton(text="➕ Вода +250мл", callback_data="water_add_250")],
-                [InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]
+                [InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")],
+                [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
             ]
             await update.message.reply_text(welcome_message, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             
         except Exception as e:
             logger.error(f"Ошибка в команде start: {e}")
-            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            await update.message.reply_text("❌ An error occurred. Please try again later.")
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
@@ -49,7 +61,7 @@ class CommandHandler:
             await update.message.reply_text(help_message, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка в команде help: {e}")
-            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            await update.message.reply_text("❌ An error occurred. Please try again later.")
 
     async def callback_query_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик callback-кнопок"""
@@ -102,23 +114,35 @@ class CommandHandler:
 
             if data == "open_menu":
                 # Главное меню
-                logger.info("📋 Открываю главное меню...")
-                keyboard = [
-                    [InlineKeyboardButton(text="📊 День: калории/вода", callback_data="menu_day")],
-                    [InlineKeyboardButton(text="📈 Неделя: график", callback_data="menu_week")],
-                    [InlineKeyboardButton(text="⚙️ Настройки воды", callback_data="menu_settings_water")],
-                ]
-                logger.info("🔘 Меню создано")
-                await query.edit_message_text(
-                    text="📋 *Главное меню*\n\nВыберите раздел:", 
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
+                logger.info("📋 Opening main menu...")
+                await self._show_main_menu(query)
                 logger.info("✅ Меню отображено")
                 return
 
+            # Change weight flow
+            if data.startswith("change_weight_"):
+                try:
+                    _, image_id, current = data.split("_")
+                    image_id = int(image_id)
+                    current = int(current)
+                except Exception:
+                    image_id = None
+                    current = 200
+                keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="open_menu")]]
+                await query.edit_message_text(
+                    text=(
+                        "✏️ Enter new weight in grams (just send a number).\n\n"
+                        f"Current: {current} g"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                # Store context for next text message
+                context.user_data["awaiting_weight_for_image"] = image_id
+                return
+
             if data == "menu_day":
-                # День: калории + вода
+                # Day: calories + water
                 nutrition_data = await self.supabase_service.get_user_nutrition_today(db_user.id)
                 user_goals = {
                     'calories': db_user.daily_calories_goal,
@@ -129,7 +153,7 @@ class CommandHandler:
                 report = ReportGenerator.format_daily_report(nutrition_data, user_goals)
                 water_today = await self.supabase_service.get_water_today(db_user.id)
                 water_text = ReportGenerator.format_water_status(water_today, db_user.daily_water_goal_ml)
-                keyboard = [[InlineKeyboardButton(text="➕ Вода +250мл", callback_data="water_add_250")], [InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]]
+                keyboard = [[InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")], [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]]
                 await query.edit_message_text(text=f"{report}\n\n{water_text}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
                 return
 
@@ -144,7 +168,7 @@ class CommandHandler:
                 report = ReportGenerator.format_weekly_report(week_data, user_goals)
                 water_week = await self.supabase_service.get_water_week(db_user.id)
                 from datetime import date, timedelta
-                days = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+                days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
                 start = date.today() - timedelta(days=6)
                 bars = {}
                 for i in range(7):
@@ -152,20 +176,20 @@ class CommandHandler:
                     key = d.isoformat()
                     bars[days[i]] = water_week.get(key, 0)
                 water_graph = ReportGenerator.format_weekly_water(bars)
-                keyboard = [[InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]]
+                keyboard = [[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]]
                 await query.edit_message_text(text=f"{report}\n\n{water_graph}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
                 return
 
             if data == "menu_settings_water":
                 keyboard = [
-                    [InlineKeyboardButton(text="1500мл", callback_data="set_water_1500"), 
-                     InlineKeyboardButton(text="2000мл", callback_data="set_water_2000")],
-                    [InlineKeyboardButton(text="2500мл", callback_data="set_water_2500"), 
-                     InlineKeyboardButton(text="3000мл", callback_data="set_water_3000")],
-                    [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="open_menu")]
+                    [InlineKeyboardButton(text="1500 ml", callback_data="set_water_1500"), 
+                     InlineKeyboardButton(text="2000 ml", callback_data="set_water_2000")],
+                    [InlineKeyboardButton(text="2500 ml", callback_data="set_water_2500"), 
+                     InlineKeyboardButton(text="3000 ml", callback_data="set_water_3000")],
+                    [InlineKeyboardButton(text="🔙 Back to menu", callback_data="open_menu")]
                 ]
                 await query.edit_message_text(
-                    text="⚙️ *Настройки воды*\n\nВыберите дневную норму:", 
+                    text="⚙️ *Water settings*\n\nChoose a daily goal:", 
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
@@ -174,9 +198,9 @@ class CommandHandler:
             if data.startswith("set_water_"):
                 goal = int(data.split("_")[-1])
                 await self.supabase_service.set_user_water_goal(db_user.id, goal)
-                keyboard = [[InlineKeyboardButton(text="📋 Меню", callback_data="open_menu")]]
+                keyboard = [[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]]
                 await query.edit_message_text(
-                    text=f"✅ Дневная норма воды установлена: *{goal} мл*", 
+                    text=f"✅ Daily water goal set: *{goal} ml*", 
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
@@ -212,6 +236,24 @@ class CommandHandler:
             if data == "subscription_stats":
                 await self._show_subscription_stats(query, db_user)
                 return
+            
+            if data == "show_subscription_plans":
+                keyboard = [
+                    [InlineKeyboardButton("💳 Monthly plan", callback_data="choose_monthly")],
+                    [InlineKeyboardButton("💰 Yearly plan", callback_data="choose_yearly")],
+                    [InlineKeyboardButton("🔙 Back", callback_data="subscription_stats")],
+                    [InlineKeyboardButton("📋 Menu", callback_data="open_menu")]
+                ]
+                await query.edit_message_text(
+                    text="Choose a subscription plan:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                return
+
+            # Fallback: если пришло неизвестное действие — показываем главное меню
+            await self._show_main_menu(query)
+            return
                 
             if data == "cancel_subscription":
                 await self._handle_subscription_cancellation(query, db_user)
@@ -240,7 +282,7 @@ class CommandHandler:
         except Exception as e:
             logger.error(f"Ошибка callback_query: {e}")
             try:
-                await query.edit_message_text("❌ Произошла ошибка. Попробуйте еще раз.")
+                await self._show_main_menu(query)
             except:
                 pass
 
@@ -294,7 +336,15 @@ class CommandHandler:
             
         except Exception as e:
             logger.error(f"Ошибка показа выбора провайдера: {e}")
-            await query.edit_message_text("❌ Ошибка показа способов оплаты")
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription_stats")],
+                [InlineKeyboardButton("📋 Меню", callback_data="open_menu")]
+            ]
+            await query.edit_message_text(
+                text="❌ Ошибка показа способов оплаты",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
 
     async def _handle_subscription_request(self, query, context: ContextTypes.DEFAULT_TYPE, db_user, plan_type: str, provider: str = None):
         """Обработка запроса на подписку через указанный провайдер"""
@@ -336,32 +386,59 @@ class CommandHandler:
             
         except Exception as e:
             logger.error(f"Ошибка обработки подписки: {e}")
-            await query.edit_message_text("❌ Ошибка обработки подписки")
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")],
+                [InlineKeyboardButton("📋 Меню", callback_data="open_menu")]
+            ]
+            await query.edit_message_text(
+                text="❌ Ошибка обработки подписки",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
 
     async def _handle_crypto_paid(self, query, db_user, plan_type: str):
         try:
-            crypto_service = self.subscription_service.get_payment_service("crypto")
-            # Активируем по подтверждению пользователя (при желании можно запросить TX-хеш отдельно)
-            success = await crypto_service.activate_after_user_confirm(db_user.id, plan_type)
-            if success:
-                keyboard = [
-                    [InlineKeyboardButton("📸 Анализировать фото", callback_data="open_menu")],
-                    [InlineKeyboardButton("📈 Статистика", callback_data="subscription_stats")],
-                ]
-                await query.edit_message_text(
-                    text=(
-                        "✅ Подписка активирована!\n\n"
-                        "Спасибо за оплату переводом на криптокошелёк.\n"
-                        "Если вы не совершали платеж — напишите в поддержку."
-                    ),
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-                return
-            await query.edit_message_text("❌ Не удалось активировать подписку. Попробуйте позже.")
+            # Создаём pending-платёж, который подтвердит монитор TRC20
+            plans = self.subscription_service.get_subscription_plans()
+            plan = plans.get(plan_type) or {}
+            amount = float(plan.get('price', 4.99 if plan_type == 'monthly' else 49.99))
+
+            self.supabase_service.supabase.table('payments').insert({
+                'user_id': db_user.id,
+                'amount': amount,
+                'currency': 'USDT',
+                'status': 'pending',
+                'payment_method': 'crypto',
+                'provider': 'crypto',
+                'provider_payment_id': '',
+                'plan_type': plan_type,
+                'created_at': datetime.utcnow().isoformat()
+            }).execute()
+
+            keyboard = [[InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]]
+            await query.edit_message_text(
+                text=(
+                    "⏳ Платёж отмечен как ожидающий.\n\n"
+                    "Как только перевод USDT (TRC20) поступит на указанный адрес, подписка активируется автоматически.\n"
+                    "Обычно это занимает 1-3 минуты."
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
         except Exception as e:
             logger.error(f"Crypto paid error: {e}")
-            await query.edit_message_text("❌ Ошибка обработки оплаты")
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")],
+                [InlineKeyboardButton("📋 Меню", callback_data="open_menu")]
+            ]
+            await query.edit_message_text(
+                text=(
+                    "❌ Ошибка обработки оплаты.\n\n"
+                    "Попробуйте ещё раз или вернитесь к выбору плана."
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
     
     async def _handle_telegram_stars_payment(self, query, context: ContextTypes.DEFAULT_TYPE, db_user, plan_type: str, plan: dict):
         """Обработка оплаты через Telegram Stars"""

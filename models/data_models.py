@@ -37,6 +37,7 @@ class NutritionData(BaseModel):
     carbs: float
     food_name: str
     confidence: float
+    weight_grams: float | None = None
     created_at: Optional[datetime] = None
 
 class DailyReport(BaseModel):
@@ -63,6 +64,7 @@ class NutritionAnalysis(BaseModel):
     carbs: float
     food_name: str
     confidence: float
+    weight_grams: float | None = None
 
 class WeeklyReport(BaseModel):
     """Модель для недельного отчета"""

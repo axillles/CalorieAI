@@ -78,19 +78,8 @@ python test_token.py
 
 #### Для Windows:
 ```bash
-# Способ 1: Через bat-файл (рекомендуется) - выберите нужный вариант
-start_bot.bat
-
-# Способ 2: Стандартный запуск с nest_asyncio
+# Стандартный запуск с nest_asyncio
 python run_bot.py
-
-# Способ 3: Запуск с threading (если есть проблемы с asyncio)
-python run_bot_threaded.py
-
-# Способ 4: Через Python скрипт
-python start_bot.py
-
-# Способ 5: Оригинальный запуск (может не работать на Windows)
 python main.py
 ```
 

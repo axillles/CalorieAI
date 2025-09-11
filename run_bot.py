@@ -13,6 +13,7 @@ from config.settings import settings
 from handlers.command_handler import CommandHandler as BotCommandHandler
 from handlers.message_handler import MessageHandler as BotMessageHandler
 from telegram import Update
+from services.trc20_monitor import Trc20Monitor
 
 # Применяем nest_asyncio для решения проблем с event loop
 nest_asyncio.apply()
@@ -104,6 +105,10 @@ async def main():
         # Используем start_polling вместо run_polling
         await application.initialize()
         await application.start()
+        
+        # Запускаем TRC20 монитор (если включен)
+        trc20_monitor = Trc20Monitor()
+        await trc20_monitor.start()
         await application.updater.start_polling()
         
         # Ждем завершения
@@ -112,6 +117,7 @@ async def main():
         except KeyboardInterrupt:
             logger.info("Получен сигнал остановки...")
         finally:
+            await trc20_monitor.stop()
             await application.updater.stop()
             await application.stop()
             await application.shutdown()
