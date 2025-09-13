@@ -4,6 +4,8 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python main_webhook.py"
+    "startCommand": "python main_webhook.py",
+    "healthcheckPath": null,
+    "healthcheckTimeout": 0
   }
 }

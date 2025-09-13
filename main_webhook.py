@@ -26,12 +26,16 @@ async def run_telegram_bot():
     """Запуск Telegram бота в отдельном потоке"""
     try:
         # Проверяем наличие необходимых переменных окружения
+        logger.info(f"🔑 TELEGRAM_BOT_TOKEN: {'установлен' if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != 'your_telegram_bot_token_here' else 'НЕ УСТАНОВЛЕН'}")
+        logger.info(f"🔑 OPENAI_API_KEY: {'установлен' if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != 'your_openai_api_key_here' else 'НЕ УСТАНОВЛЕН'}")
+        logger.info(f"🔑 SUPABASE_URL: {'установлен' if settings.SUPABASE_URL and settings.SUPABASE_URL != 'https://your-project-id.supabase.co' else 'НЕ УСТАНОВЛЕН'}")
+        
         if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == "your_telegram_bot_token_here":
-            logger.error("TELEGRAM_BOT_TOKEN не установлен")
+            logger.error("❌ TELEGRAM_BOT_TOKEN не установлен")
             return
         
         if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "your_openai_api_key_here":
-            logger.error("OPENAI_API_KEY не установлен")
+            logger.error("❌ OPENAI_API_KEY не установлен")
             return
         
         logger.info("Запуск Telegram бота...")
@@ -106,21 +110,29 @@ def start_telegram_bot():
     logger.info("Telegram бот запущен в отдельном потоке")
 
 if __name__ == "__main__":
-    logger.info("Запуск веб-хук сервера с Telegram ботом...")
+    logger.info("🚀 Запуск веб-хук сервера с Telegram ботом...")
     
     # Запускаем Telegram бот в отдельном потоке
     start_telegram_bot()
     
     # Небольшая задержка для запуска бота
-    time.sleep(3)
+    logger.info("⏳ Ожидание запуска Telegram бота...")
+    time.sleep(5)
     
     # Запускаем веб-хук сервер как основной процесс
     port = int(os.getenv("PORT", 8001))
-    logger.info(f"Запуск веб-хук сервера на порту {port}")
+    logger.info(f"🌐 Запуск веб-хук сервера на порту {port}")
+    logger.info(f"🔗 Health check будет доступен по адресу: http://0.0.0.0:{port}/health")
     
-    uvicorn.run(
-        webhook_app, 
-        host="0.0.0.0", 
-        port=port, 
-        log_level="info"
-    )
+    try:
+        uvicorn.run(
+            webhook_app, 
+            host="0.0.0.0", 
+            port=port, 
+            log_level="info",
+            access_log=True
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска веб-хук сервера: {e}")
+        import traceback
+        traceback.print_exc()
