@@ -72,21 +72,23 @@ async def main():
         # Инициализируем мониторинг подписок
         subscription_monitor = SubscriptionMonitor()
         
-        # Запускаем веб-хук сервер в отдельном потоке (только если не в Railway)
+        # Запускаем веб-хук сервер в отдельном потоке
         import os
-        if not os.getenv("RAILWAY_ENVIRONMENT"):
-            def run_webhook_server():
-                try:
-                    from webhook_server import webhook_app
-                    uvicorn.run(webhook_app, host="0.0.0.0", port=8001, log_level="info")
-                except Exception as e:
-                    logger.error(f"Ошибка запуска веб-хук сервера: {e}")
-            
-            webhook_thread = threading.Thread(target=run_webhook_server, daemon=True)
-            webhook_thread.start()
-            logger.info("Веб-хук сервер запущен на порту 8001")
-        else:
-            logger.info("Запуск в Railway - веб-хук сервер будет запущен отдельно")
+        def run_webhook_server():
+            try:
+                from webhook_server import webhook_app
+                port = int(os.getenv("PORT", 8001))
+                uvicorn.run(webhook_app, host="0.0.0.0", port=port, log_level="info")
+            except Exception as e:
+                logger.error(f"Ошибка запуска веб-хук сервера: {e}")
+        
+        webhook_thread = threading.Thread(target=run_webhook_server, daemon=True)
+        webhook_thread.start()
+        logger.info("Веб-хук сервер запущен")
+        
+        # Небольшая задержка для запуска веб-хук сервера
+        import time
+        time.sleep(2)
         
         # Создаем приложение без JobQueue для избежания проблем с pytz
         application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).job_queue(None).build()
