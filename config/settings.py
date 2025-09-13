@@ -9,7 +9,7 @@ class Settings:
     
     # OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    OPENAI_ORG_ID = os.getenv("OPENAI_ORG_ID")
+    OPENAI_ORG_ID = os.getenv("OPENAI_ORG_ID") or None
     
     # Supabase
     SUPABASE_URL = os.getenv("SUPABASE_URL")

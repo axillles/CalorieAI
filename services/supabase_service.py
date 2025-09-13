@@ -47,6 +47,23 @@ class SupabaseService:
             logger.error(f"Ошибка получения пользователя: {e}")
             return None
     
+    async def increment_total_photos_sent(self, telegram_id: int):
+        """Увеличить счетчик общего количества отправленных фото"""
+        try:
+            if not self.supabase:
+                raise Exception("Supabase client not initialized")
+            
+            # Увеличиваем счетчик на 1
+            self.supabase.table("users").update({
+                "total_photos_sent": self.supabase.table("users").select("total_photos_sent").eq("telegram_id", telegram_id).execute().data[0]["total_photos_sent"] + 1
+            }).eq("telegram_id", telegram_id).execute()
+            
+            logger.info(f"Увеличен счетчик общих фото для пользователя {telegram_id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления счетчика общих фото: {e}")
+            raise
+    
     # FoodImage operations
     async def create_food_image(self, food_image: FoodImage) -> FoodImage:
         """Создать запись о фотографии еды"""

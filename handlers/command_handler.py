@@ -150,7 +150,10 @@ class CommandHandler:
                     'fats': db_user.daily_fats_goal,
                     'carbs': db_user.daily_carbs_goal
                 }
-                report = ReportGenerator.format_daily_report(nutrition_data, user_goals)
+                user_stats = {
+                    'total_photos_sent': db_user.total_photos_sent
+                }
+                report = ReportGenerator.format_daily_report(nutrition_data, user_goals, user_stats)
                 water_today = await self.supabase_service.get_water_today(db_user.id)
                 water_text = ReportGenerator.format_water_status(water_today, db_user.daily_water_goal_ml)
                 keyboard = [[InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")], [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]]
@@ -801,8 +804,13 @@ class CommandHandler:
                 'carbs': db_user.daily_carbs_goal
             }
             
+            # Формируем статистику пользователя
+            user_stats = {
+                'total_photos_sent': db_user.total_photos_sent
+            }
+            
             # Генерируем отчет
-            report = ReportGenerator.format_daily_report(nutrition_data, user_goals)
+            report = ReportGenerator.format_daily_report(nutrition_data, user_goals, user_stats)
             
             # Вода за сегодня
             water_today = await self.supabase_service.get_water_today(db_user.id)

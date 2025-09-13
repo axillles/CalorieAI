@@ -16,6 +16,7 @@ class User(BaseModel):
     subscription_status: str = "free"  # free, active, expired, canceled
     subscription_plan: Optional[str] = None  # monthly, yearly
     photos_analyzed: int = 0
+    total_photos_sent: int = 0  # Общее количество отправленных фото за все время
     stripe_customer_id: Optional[str] = None
     stripe_subscription_id: Optional[str] = None
     subscription_start: Optional[datetime] = None

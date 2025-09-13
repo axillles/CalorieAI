@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class OpenAIService:
     def __init__(self):
         client_kwargs = {"api_key": settings.OPENAI_API_KEY}
-        if getattr(settings, "OPENAI_ORG_ID", None):
+        if hasattr(settings, "OPENAI_ORG_ID") and settings.OPENAI_ORG_ID:
             client_kwargs["organization"] = settings.OPENAI_ORG_ID
         self.client = openai.OpenAI(**client_kwargs)
         self.model = settings.OPENAI_MODEL

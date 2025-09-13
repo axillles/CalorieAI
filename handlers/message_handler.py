@@ -96,6 +96,9 @@ class MessageHandler:
             )
             created_image = await self.supabase_service.create_food_image(food_image)
             
+            # Увеличиваем счетчик общих отправленных фото
+            await self.supabase_service.increment_total_photos_sent(user.id)
+            
             try:
                 # Анализируем изображение через OpenAI
                 nutrition_analysis = self.openai_service.analyze_food_image(image_bytes)

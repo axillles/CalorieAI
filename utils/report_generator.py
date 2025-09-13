@@ -6,13 +6,16 @@ logger = logging.getLogger(__name__)
 
 class ReportGenerator:
     @staticmethod
-    def format_daily_report(nutrition_data: Dict[str, float], user_goals: Dict[str, int] = None) -> str:
+    def format_daily_report(nutrition_data: Dict[str, float], user_goals: Dict[str, int] = None, user_stats: Dict[str, int] = None) -> str:
         """Format daily nutrition report"""
         try:
             calories = nutrition_data.get('calories', 0)
             protein = nutrition_data.get('protein', 0)
             fats = nutrition_data.get('fats', 0)
             carbs = nutrition_data.get('carbs', 0)
+            
+            # Получаем статистику пользователя
+            total_photos_sent = user_stats.get('total_photos_sent', 0) if user_stats else 0
             
             # Используем дефолтные цели если не переданы
             if not user_goals:
@@ -50,6 +53,7 @@ class ReportGenerator:
 🍞 **Carbs:** {carbs:.1f} / {user_goals['carbs']} g ({carbs_percent:.1f}%)
 {carbs_bar}
 
+📸 **Photos sent:** {total_photos_sent} total
 📅 Date: {date.today().strftime('%Y-%m-%d')}
 """
             return report.strip()
