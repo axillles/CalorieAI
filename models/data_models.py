@@ -17,8 +17,6 @@ class User(BaseModel):
     subscription_plan: Optional[str] = None  # monthly, yearly
     photos_analyzed: int = 0
     total_photos_sent: int = 0  # Общее количество отправленных фото за все время
-    stripe_customer_id: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
     subscription_start: Optional[datetime] = None
     subscription_end: Optional[datetime] = None
 
@@ -100,9 +98,7 @@ class Payment(BaseModel):
     amount: float
     currency: str = "USD"
     status: str = "pending"  # pending, completed, failed, refunded
-    payment_method: str = "stripe"  # stripe, telegram (legacy)
-    stripe_subscription_id: Optional[str] = None
-    stripe_session_id: Optional[str] = None
+    payment_method: str = "crypto"  # crypto, telegram_stars
     plan_type: Optional[str] = None  # monthly, yearly
     telegram_payment_charge_id: Optional[str] = None  # для совместимости
     created_at: Optional[datetime] = None

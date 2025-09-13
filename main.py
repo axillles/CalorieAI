@@ -44,19 +44,6 @@ async def main():
         # Check payment provider settings
         enabled_providers = settings.ENABLED_PAYMENT_PROVIDERS
         
-        # Only check Stripe if it's enabled
-        if "stripe" in enabled_providers:
-            if not settings.STRIPE_SECRET_KEY:
-                logger.warning("STRIPE_SECRET_KEY не установлен, Stripe будет отключен")
-            
-            if not settings.STRIPE_WEBHOOK_SECRET:
-                logger.warning("STRIPE_WEBHOOK_SECRET не установлен")
-                logger.info("Для работы веб-хуков Stripe добавьте STRIPE_WEBHOOK_SECRET в .env")
-            
-            if not settings.STRIPE_PRICE_ID_MONTHLY or not settings.STRIPE_PRICE_ID_YEARLY:
-                logger.warning("Не настроены Price ID для планов подписок Stripe")
-                logger.info("Добавьте STRIPE_PRICE_ID_MONTHLY и STRIPE_PRICE_ID_YEARLY в .env")
-        
         # Check PayPal if enabled
         if "paypal" in enabled_providers:
             if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
@@ -118,7 +105,7 @@ async def main():
             # Запускаем бота
             logger.info("Запуск бота...")
             logger.info("Бот готов к работе! Отправьте /start в Telegram для начала.")
-            logger.info(f"Веб-хук URL: {settings.APP_URL}/webhook/stripe")
+            logger.info(f"App URL: {settings.APP_URL}")
             await application.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
         finally:
             # Останавливаем мониторинг при завершении

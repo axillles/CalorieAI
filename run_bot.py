@@ -54,11 +54,6 @@ async def main():
         enabled_providers = settings.ENABLED_PAYMENT_PROVIDERS
         logger.info(f"Включенные провайдеры платежей: {', '.join(enabled_providers)}")
         
-        # Only check Stripe if it's enabled
-        if "stripe" in enabled_providers:
-            if not settings.STRIPE_SECRET_KEY:
-                logger.warning("STRIPE_SECRET_KEY не установлен, Stripe будет отключен")
-        
         # Check PayPal if enabled
         if "paypal" in enabled_providers:
             if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:

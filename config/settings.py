@@ -32,23 +32,16 @@ class Settings:
     DEFAULT_DAILY_FATS = 65      # grams
     DEFAULT_DAILY_CARBS = 250    # grams
     
-    # Stripe Configuration
-    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-    STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
-    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_MONTHLY = os.getenv("STRIPE_PRICE_ID_MONTHLY")
-    STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
-    
     # PayPal Configuration
     PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID")
     PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET")
     PAYPAL_BASE_URL = os.getenv("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com")  # sandbox по умолчанию
     
     # Payment Provider Settings
-    ENABLED_PAYMENT_PROVIDERS = os.getenv("ENABLED_PAYMENT_PROVIDERS", "crypto").split(",")
+    ENABLED_PAYMENT_PROVIDERS = os.getenv("ENABLED_PAYMENT_PROVIDERS", "crypto,telegram_stars").split(",")
     PRIMARY_PAYMENT_PROVIDER = os.getenv("PRIMARY_PAYMENT_PROVIDER", "crypto")
     
-    # App URL for Stripe redirects
+    # App URL
     APP_URL = os.getenv("APP_URL", "https://your-domain.com")
     
     # Subscription settings

@@ -164,11 +164,6 @@ class SubscriptionService:
             if not user:
                 return None
             
-            # Если у пользователя есть Stripe подписка, получаем актуальную информацию
-            # if user.stripe_subscription_id:
-            #     stripe_info = await self.stripe_service.get_subscription_info(user_id)
-            #     if stripe_info:
-            #         return stripe_info
             
             # Иначе возвращаем информацию из нашей БД
             return {
@@ -187,8 +182,6 @@ class SubscriptionService:
     async def cancel_subscription(self, user_id: int) -> bool:
         """Отменить подписку пользователя"""
         try:
-            # if self.stripe_service: # This line was removed as per the edit hint
-            #     return await self.stripe_service.cancel_subscription(user_id)
             return False # Assuming no direct cancellation for crypto
         except Exception as e:
             logger.error(f"Ошибка отмены подписки: {e}")

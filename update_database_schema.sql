@@ -14,7 +14,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_end TIMESTAMP DEFAULT NU
 CREATE TABLE IF NOT EXISTS payments (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id),
-    provider TEXT NOT NULL, -- 'telegram_stars', 'paypal', 'stripe'
+    provider TEXT NOT NULL, -- 'telegram_stars', 'paypal', 'crypto'
     provider_payment_id TEXT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     currency TEXT NOT NULL,

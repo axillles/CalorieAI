@@ -277,7 +277,7 @@ class CommandHandler:
                 return
                 
             if data == "confirm_cancel_subscription":
-                # Отменяем подписку через Stripe
+                # Отменяем подписку
                 success = await self.subscription_service.cancel_subscription(db_user.telegram_id)
                 if success:
                     message = (
