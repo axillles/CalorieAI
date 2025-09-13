@@ -231,20 +231,16 @@ class MessageHandler:
                         user_id = img.data["user_id"] if img and img.data else None
                         if user_id:
                             await self._update_daily_report(user_id)
-                        await update.message.reply_text(
-                            f"✅ Weight updated to {new_weight} g. Nutrition recalculated.",
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
-                        )
+                        # Показываем обновленный экран с результатами анализа
+                        await self._show_nutrition_analysis_screen(update, awaiting_image_id, new_weight)
                     else:
                         await update.message.reply_text(
                             "❌ Could not find analysis for this image.",
                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
                         )
                 except Exception:
-                    await update.message.reply_text(
-                        "❌ Please send a valid integer weight in grams.",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]])
-                    )
+                    # Показываем экран анализа с текущим весом при ошибке ввода
+                    await self._show_nutrition_analysis_screen(update, awaiting_image_id)
                 finally:
                     context.user_data.pop("awaiting_weight_for_image", None)
                 return
@@ -288,3 +284,52 @@ class MessageHandler:
             
         except Exception as e:
             logger.error(f"Ошибка обновления дневного отчета: {e}")
+
+    async def _show_nutrition_analysis_screen(self, update: Update, image_id: int, weight_grams: int = None):
+        """Показывает экран с результатами анализа питания"""
+        try:
+            # Получаем данные анализа из базы
+            nd = self.supabase_service.supabase.table("nutrition_data").select("id, calories, protein, fats, carbs, weight_grams, food_name, confidence").eq("food_image_id", image_id).order("created_at", desc=True).limit(1).execute()
+            
+            if not nd.data:
+                await update.message.reply_text("❌ Could not find analysis data.")
+                return
+            
+            row = nd.data[0]
+            current_weight = weight_grams if weight_grams is not None else row.get("weight_grams", 200)
+            
+            # Форматируем результат с актуальным весом
+            result_message = ReportGenerator.format_nutrition_result({
+                'food_name': row.get('food_name', 'unknown'),
+                'calories': row['calories'],
+                'protein': row['protein'],
+                'fats': row['fats'],
+                'carbs': row['carbs'],
+                'weight_grams': current_weight,
+                'confidence': row.get('confidence', 0.8)
+            })
+            
+            # Создаем клавиатуру с кнопкой изменения веса
+            keyboard = [
+                [InlineKeyboardButton(text="➕ Water +250ml", callback_data="water_add_250")],
+                [InlineKeyboardButton(text=f"⚖️ Change weight ({current_weight} g)", callback_data=f"change_weight_{image_id}_{current_weight}")],
+                [InlineKeyboardButton(text="📋 Menu", callback_data="open_menu")]
+            ]
+            
+            # Отправляем или редактируем сообщение
+            if hasattr(update, 'edit_message_text'):
+                await update.edit_message_text(
+                    text=result_message, 
+                    parse_mode='Markdown', 
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await update.message.reply_text(
+                    result_message, 
+                    parse_mode='Markdown', 
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                
+        except Exception as e:
+            logger.error(f"Error showing nutrition analysis screen: {e}")
+            await update.message.reply_text("❌ Error displaying analysis results.")

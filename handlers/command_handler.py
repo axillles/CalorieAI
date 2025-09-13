@@ -128,7 +128,7 @@ class CommandHandler:
                 except Exception:
                     image_id = None
                     current = 200
-                keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="open_menu")]]
+                keyboard = [[InlineKeyboardButton("🔙 Back", callback_data=f"back_to_analysis_{image_id}")]]
                 await query.edit_message_text(
                     text=(
                         "✏️ Enter new weight in grams (just send a number).\n\n"
@@ -139,6 +139,20 @@ class CommandHandler:
                 )
                 # Store context for next text message
                 context.user_data["awaiting_weight_for_image"] = image_id
+                return
+
+            # Back to analysis screen
+            if data.startswith("back_to_analysis_"):
+                try:
+                    _, image_id = data.split("_")
+                    image_id = int(image_id)
+                    # Импортируем MessageHandler для доступа к функции показа экрана анализа
+                    from handlers.message_handler import MessageHandler
+                    message_handler = MessageHandler()
+                    await message_handler._show_nutrition_analysis_screen(query, image_id)
+                except Exception as e:
+                    logger.error(f"Error showing analysis screen: {e}")
+                    await self._show_main_menu(query)
                 return
 
             if data == "menu_day":

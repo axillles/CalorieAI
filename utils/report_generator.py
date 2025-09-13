@@ -138,11 +138,13 @@ class ReportGenerator:
             carbs = nutrition_data.get('carbs', 0)
             weight_grams = nutrition_data.get('weight_grams')
             
+            # Get confidence if available, otherwise use default
+            confidence = nutrition_data.get('confidence', 0.8)  # Default to high confidence
             confidence_emoji = "🟢" if confidence > 0.7 else "🟡" if confidence > 0.4 else "🔴"
             
             weight_line = f"⚖️ Weight: {weight_grams:.0f} g\n" if weight_grams else ""
             result = f"""
-🍽️ *Analysis complete!*
+🍽️ *Analysis complete!* {confidence_emoji}
 
 📝 **Dish:** {food_name}
 
