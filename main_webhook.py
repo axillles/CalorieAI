@@ -74,7 +74,13 @@ async def run_telegram_bot():
         try:
             # Запускаем бота
             logger.info("Бот готов к работе!")
-            await application.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
+            # Используем run_polling без signal handlers для работы в потоке
+            # В потоке signal handlers не работают, поэтому используем polling без них
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES, 
+                close_loop=False,
+                stop_signals=()  # Пустой кортеж отключает signal handlers
+            )
         finally:
             # Останавливаем мониторинг при завершении
             subscription_monitor.stop_monitoring()
@@ -88,25 +94,27 @@ def start_telegram_bot():
     """Запуск Telegram бота в отдельном потоке"""
     def run_bot():
         try:
-            # Исправление для Windows и Python 3.13
+            logger.info("Инициализация event loop для Telegram бота...")
+            # Создаем новый event loop для потока
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                asyncio.run(run_telegram_bot())
-            except RuntimeError as e:
-                if "event loop is already running" in str(e):
-                    # Если event loop уже запущен, используем другой подход
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(run_telegram_bot())
-                    finally:
-                        loop.close()
-                else:
-                    raise
+                logger.info("Запуск Telegram бота в потоке...")
+                loop.run_until_complete(run_telegram_bot())
+            except Exception as e:
+                logger.error(f"Ошибка в event loop Telegram бота: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                logger.info("Закрытие event loop Telegram бота...")
+                loop.close()
         except Exception as e:
             logger.error(f"Ошибка в потоке Telegram бота: {e}")
+            import traceback
+            traceback.print_exc()
             logger.info("Веб-хук сервер продолжит работать без Telegram бота")
     
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread = threading.Thread(target=run_bot, daemon=True, name="TelegramBot")
     bot_thread.start()
     logger.info("Telegram бот запущен в отдельном потоке")
 

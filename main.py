@@ -106,7 +106,11 @@ async def main():
             logger.info("Запуск бота...")
             logger.info("Бот готов к работе! Отправьте /start в Telegram для начала.")
             logger.info(f"App URL: {settings.APP_URL}")
-            await application.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES, 
+                close_loop=False,
+                stop_signals=()  # Отключаем signal handlers для стабильности
+            )
         finally:
             # Останавливаем мониторинг при завершении
             subscription_monitor.stop_monitoring()

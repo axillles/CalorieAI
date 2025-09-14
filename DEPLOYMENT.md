@@ -20,13 +20,21 @@ SUPABASE_URL=your_supabase_url_here
 SUPABASE_KEY=your_supabase_key_here
 ```
 
-#### Дополнительные переменные (опционально):
+#### Для криптоплатежей (если используете):
+```bash
+CRYPTO_TON_ADDRESS=your_ton_address_here
+CRYPTO_TRC20_USDT_ADDRESS=your_trc20_usdt_address_here
+ENABLE_TRC20_MONITOR=true
+TRONGRID_API_KEY=your_trongrid_api_key_here
+```
+
+#### Дополнительные переменные:
 ```bash
 OPENAI_ORG_ID=your_openai_org_id_here
 ENABLE_G4F_FALLBACK=true
 APP_URL=https://your-app-name.railway.app
-CRYPTO_TON_ADDRESS=your_ton_address_here
-CRYPTO_TRC20_USDT_ADDRESS=your_trc20_usdt_address_here
+ENABLED_PAYMENT_PROVIDERS=crypto,telegram_stars
+PRIMARY_PAYMENT_PROVIDER=crypto
 ```
 
 ### 3. Настройка базы данных

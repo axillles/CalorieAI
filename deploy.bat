@@ -53,6 +53,26 @@ if not "%CRYPTO_TRC20_USDT_ADDRESS%"=="" (
     railway variables set CRYPTO_TRC20_USDT_ADDRESS=%CRYPTO_TRC20_USDT_ADDRESS%
 )
 
+set /p ENABLE_TRC20_MONITOR="ENABLE_TRC20_MONITOR (true/false, опционально): "
+if not "%ENABLE_TRC20_MONITOR%"=="" (
+    railway variables set ENABLE_TRC20_MONITOR=%ENABLE_TRC20_MONITOR%
+)
+
+set /p TRONGRID_API_KEY="TRONGRID_API_KEY (опционально): "
+if not "%TRONGRID_API_KEY%"=="" (
+    railway variables set TRONGRID_API_KEY=%TRONGRID_API_KEY%
+)
+
+set /p ENABLE_G4F_FALLBACK="ENABLE_G4F_FALLBACK (true/false, опционально): "
+if not "%ENABLE_G4F_FALLBACK%"=="" (
+    railway variables set ENABLE_G4F_FALLBACK=%ENABLE_G4F_FALLBACK%
+)
+
+set /p APP_URL="APP_URL (опционально): "
+if not "%APP_URL%"=="" (
+    railway variables set APP_URL=%APP_URL%
+)
+
 REM Деплой
 echo 🚀 Запуск деплоя...
 railway up
