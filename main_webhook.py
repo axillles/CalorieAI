@@ -74,16 +74,28 @@ async def run_telegram_bot():
         try:
             # Запускаем бота
             logger.info("Бот готов к работе!")
-            # Используем run_polling без signal handlers для работы в потоке
-            # В потоке signal handlers не работают, поэтому используем polling без них
-            await application.run_polling(
-                allowed_updates=Update.ALL_TYPES, 
-                close_loop=False,
-                stop_signals=()  # Пустой кортеж отключает signal handlers
+            # Используем start_polling вместо run_polling для работы в существующем event loop
+            await application.initialize()
+            await application.start()
+            await application.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES
             )
+            
+            # Ждем бесконечно (бот будет работать)
+            try:
+                await asyncio.Event().wait()  # Бесконечное ожидание
+            except asyncio.CancelledError:
+                logger.info("Получен сигнал остановки бота...")
         finally:
             # Останавливаем мониторинг при завершении
             subscription_monitor.stop_monitoring()
+            # Правильно останавливаем бота
+            try:
+                await application.updater.stop()
+                await application.stop()
+                await application.shutdown()
+            except Exception as e:
+                logger.warning(f"Ошибка при остановке бота: {e}")
             
     except Exception as e:
         logger.error(f"Ошибка запуска Telegram бота: {e}")
@@ -100,6 +112,7 @@ def start_telegram_bot():
             asyncio.set_event_loop(loop)
             try:
                 logger.info("Запуск Telegram бота в потоке...")
+                # Используем run_until_complete для запуска в новом event loop
                 loop.run_until_complete(run_telegram_bot())
             except Exception as e:
                 logger.error(f"Ошибка в event loop Telegram бота: {e}")
@@ -107,7 +120,18 @@ def start_telegram_bot():
                 traceback.print_exc()
             finally:
                 logger.info("Закрытие event loop Telegram бота...")
-                loop.close()
+                # Правильно закрываем event loop
+                try:
+                    # Отменяем все pending задачи
+                    pending = asyncio.all_tasks(loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                except Exception as e:
+                    logger.warning(f"Ошибка при закрытии задач: {e}")
+                finally:
+                    loop.close()
         except Exception as e:
             logger.error(f"Ошибка в потоке Telegram бота: {e}")
             import traceback

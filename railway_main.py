@@ -36,7 +36,13 @@ def start_telegram_bot():
         try:
             # Импортируем только когда нужно
             from main_webhook import run_telegram_bot
-            asyncio.run(run_telegram_bot())
+            # Создаем новый event loop для потока
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_telegram_bot())
+            finally:
+                loop.close()
         except Exception as e:
             logger.error(f"Ошибка запуска Telegram бота: {e}")
             logger.info("Веб-сервер продолжит работать без Telegram бота")
