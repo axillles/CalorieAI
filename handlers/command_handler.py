@@ -1,4 +1,5 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import uuid
 from telegram.ext import ContextTypes
 from services.supabase_service import SupabaseService
 from services.subscription_service import SubscriptionService
@@ -381,18 +382,74 @@ class CommandHandler:
             loading_message = await query.edit_message_text("🔄 Обрабатываем запрос на оплату...")
             
             if provider == "crypto":
-                crypto_service = self.subscription_service.get_payment_service("crypto")
-                instructions = crypto_service.get_payment_instructions(plan_type)
-                if not instructions:
+                # Готовим/переиспользуем pending-платёж с уникальной суммой для снижения коллизий
+                # 1) Проверим, нет ли уже pending для этого пользователя/плана за последние 24ч
+                from datetime import timedelta
+                since_iso = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+                existing = self.supabase_service.supabase.table('payments') \
+                    .select('*') \
+                    .eq('user_id', db_user.id) \
+                    .eq('plan_type', plan_type) \
+                    .eq('status', 'pending') \
+                    .gte('created_at', since_iso) \
+                    .order('created_at', desc=True) \
+                    .limit(1) \
+                    .execute()
+                existing_pay = (existing.data or [None])[0]
+
+                base_price = float(plan.get('price', 4.99 if plan_type == 'monthly' else 49.99))
+                # Детерминированная надбавка 0.01..0.49 по пользователю/плану, чтобы отличать оплаты
+                offs_seed = (db_user.id + (0 if plan_type == 'monthly' else 100)) % 49 + 1
+                unique_delta = offs_seed / 100.0
+                expected_amount = round(base_price + unique_delta, 2)
+
+                if existing_pay:
+                    expected_amount = float(existing_pay.get('amount', expected_amount))
+                    provider_payment_id = existing_pay.get('provider_payment_id') or f"pending:{db_user.id}:{int(datetime.utcnow().timestamp())}:{uuid.uuid4().hex[:8]}"
+                else:
+                    provider_payment_id = f"pending:{db_user.id}:{int(datetime.utcnow().timestamp())}:{uuid.uuid4().hex[:8]}"
+                    self.supabase_service.supabase.table('payments').insert({
+                        'user_id': db_user.id,
+                        'amount': expected_amount,
+                        'currency': 'USDT',
+                        'status': 'pending',
+                        'payment_method': 'crypto',
+                        'provider': 'crypto',
+                        'provider_payment_id': provider_payment_id,
+                        'plan_type': plan_type,
+                        'created_at': datetime.utcnow().isoformat()
+                    }).execute()
+
+                # Собираем инструкции с конкретной суммой и адресами из настроек
+                from config.settings import settings
+                ton_addr = getattr(settings, 'CRYPTO_TON_ADDRESS', None)
+                trc20_addr = getattr(settings, 'CRYPTO_TRC20_USDT_ADDRESS', None)
+                if not ton_addr and not trc20_addr:
                     await query.edit_message_text("❌ Криптокошелёк не настроен. Добавьте адрес в .env")
                     return
+
+                plan_name = plan.get('name', 'Subscription')
+                lines = [
+                    f"🪙 Subscription payment: {plan_name}",
+                    f"💰 Amount: ${expected_amount} USDT",
+                    "\nSend the equivalent in crypto to one of the addresses:",
+                ]
+                if ton_addr:
+                    lines.append(f"• TON (TON): `{ton_addr}`")
+                if trc20_addr:
+                    lines.append(f"• USDT (TRC20): `{trc20_addr}`")
+                lines.extend([
+                    "\nAfter transfer, press \"✅ I have paid\" below.",
+                    "If needed, send the transaction hash in this chat.",
+                    "\nℹ️ Important: pay the exact amount down to the cent.",
+                ])
 
                 keyboard = [
                     [InlineKeyboardButton("✅ Я оплатил", callback_data=f"crypto_paid_{plan_type}")],
                     [InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]
                 ]
                 await query.edit_message_text(
-                    text=instructions,
+                    text="\n".join(lines),
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
@@ -415,27 +472,45 @@ class CommandHandler:
 
     async def _handle_crypto_paid(self, query, db_user, plan_type: str):
         try:
-            # Создаём pending-платёж, который подтвердит монитор TRC20
-            plans = self.subscription_service.get_subscription_plans()
-            plan = plans.get(plan_type) or {}
-            amount = float(plan.get('price', 4.99 if plan_type == 'monthly' else 49.99))
+            # Переиспользуем существующий pending или создаём новый, если нет
+            from datetime import timedelta
+            since_iso = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+            existing = self.supabase_service.supabase.table('payments') \
+                .select('*') \
+                .eq('user_id', db_user.id) \
+                .eq('plan_type', plan_type) \
+                .eq('status', 'pending') \
+                .gte('created_at', since_iso) \
+                .order('created_at', desc=True) \
+                .limit(1) \
+                .execute()
+            existing_pay = (existing.data or [None])[0]
 
-            self.supabase_service.supabase.table('payments').insert({
-                'user_id': db_user.id,
-                'amount': amount,
-                'currency': 'USDT',
-                'status': 'pending',
-                'payment_method': 'crypto',
-                'provider': 'crypto',
-                'provider_payment_id': '',
-                'plan_type': plan_type,
-                'created_at': datetime.utcnow().isoformat()
-            }).execute()
+            if not existing_pay:
+                plans = self.subscription_service.get_subscription_plans()
+                plan = plans.get(plan_type) or {}
+                base_price = float(plan.get('price', 4.99 if plan_type == 'monthly' else 49.99))
+                offs_seed = (db_user.id + (0 if plan_type == 'monthly' else 100)) % 49 + 1
+                unique_delta = offs_seed / 100.0
+                amount = round(base_price + unique_delta, 2)
+                provider_payment_id = f"pending:{db_user.id}:{int(datetime.utcnow().timestamp())}:{uuid.uuid4().hex[:8]}"
+
+                self.supabase_service.supabase.table('payments').insert({
+                    'user_id': db_user.id,
+                    'amount': amount,
+                    'currency': 'USDT',
+                    'status': 'pending',
+                    'payment_method': 'crypto',
+                    'provider': 'crypto',
+                    'provider_payment_id': provider_payment_id,
+                    'plan_type': plan_type,
+                    'created_at': datetime.utcnow().isoformat()
+                }).execute()
 
             keyboard = [[InlineKeyboardButton("🔙 Назад к планам", callback_data="subscription_stats")]]
             await query.edit_message_text(
                 text=(
-                    "⏳ Платёж отмечен как ожидающий.\n\n"
+                    "⏳ Платёж ожидается.\n\n"
                     "Как только перевод USDT (TRC20) поступит на указанный адрес, подписка активируется автоматически.\n"
                     "Обычно это занимает 1-3 минуты."
                 ),

@@ -59,7 +59,10 @@ class Trc20Monitor:
         if not address:
             return
 
-        pending = self.supabase_service.supabase.table('payments').select('*').eq('payment_method', 'crypto').eq('status', 'pending').order('created_at', desc=True).limit(50).execute()
+        # Берём только недавние ожидания, чтобы не матчить очень старые
+        from datetime import datetime, timedelta
+        since_iso = (datetime.utcnow() - timedelta(days=2)).isoformat()
+        pending = self.supabase_service.supabase.table('payments').select('*').eq('payment_method', 'crypto').eq('status', 'pending').gte('created_at', since_iso).order('created_at', desc=True).limit(50).execute()
         pending_list: List[Dict[str, Any]] = pending.data or []
         if not pending_list:
             return
@@ -102,10 +105,26 @@ class Trc20Monitor:
             return
 
         tolerance = getattr(settings, 'TRC20_AMOUNT_TOLERANCE_USD', 0.5)
+        # Дополнительно ограничим окно по времени транзакции: ±24ч от создания платежа
+        time_window_hours = getattr(settings, 'TRC20_TIME_WINDOW_HOURS', 24)
         for pay in pending_list:
             try:
                 price = float(pay.get('amount', 0))
-                match = next((inc for inc in incoming if abs(inc['amount'] - price) <= tolerance), None)
+                created_at = pay.get('created_at') or ''
+                created_dt = None
+                try:
+                    created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00')) if created_at else None
+                except Exception:
+                    created_dt = None
+
+                def within_time_window(inc_ts_ms: int) -> bool:
+                    if not created_dt:
+                        return True
+                    inc_dt = datetime.utcfromtimestamp(int(inc_ts_ms) / 1000.0)
+                    delta = abs((inc_dt - created_dt).total_seconds()) / 3600.0
+                    return delta <= time_window_hours
+
+                match = next((inc for inc in incoming if within_time_window(inc['timestamp_ms']) and abs(inc['amount'] - price) <= tolerance), None)
                 if not match:
                     continue
                 ok = await self.crypto.activate_after_user_confirm(user_id=pay['user_id'], plan_type=(pay.get('plan_type') or 'monthly'), tx_hash=match['tx_hash'])
