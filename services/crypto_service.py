@@ -9,12 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 class CryptoService:
-    """Простой провайдер оплаты переводом на криптокошелек (без авто-подтверждения).
+    """Провайдер оплаты переводом на криптокошелёк с подтверждением монитором.
 
     Логика:
     - Показываем адрес(а) кошельков (TON и/или USDT TRC20).
-    - Пользователь переводит сумму и нажимает "Я оплатил".
-    - Сразу активируем подписку (доверительный режим) и записываем платеж с пометкой user_confirmed.
+    - Пользователь переводит сумму и нажимает "Я оплатил" → создаётся платеж `pending`.
+    - Монитор TRC20 подтверждает поступление и вызывает активацию подписки.
+    - Платёжную запись создаёт/обновляет внешний код (монитор), здесь дубликаты не создаём.
     """
 
     def __init__(self) -> None:
@@ -91,21 +92,6 @@ class CryptoService:
                 "photos_analyzed": 0,
                 "payment_provider": "crypto",
             }).eq("id", user_id).execute()
-
-            # Запишем платеж (best-effort)
-            try:
-                self.supabase_service.supabase.table("payments").insert({
-                    "user_id": user_id,
-                    "amount": plan["price"],
-                    "currency": plan["currency"],
-                    "status": "user_confirmed",
-                    "payment_method": "crypto",
-                    "plan_type": plan_type,
-                    "tx_hash": tx_hash or "",
-                    "created_at": datetime.now().isoformat(),
-                }).execute()
-            except Exception as pay_err:
-                logger.warning(f"Payment record insert skipped (crypto): {pay_err}")
 
             return True
         except Exception as e:
