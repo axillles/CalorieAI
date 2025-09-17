@@ -512,7 +512,8 @@ class CommandHandler:
                 text=(
                     "⏳ Платёж ожидается.\n\n"
                     "Как только перевод USDT (TRC20) поступит на указанный адрес, подписка активируется автоматически.\n"
-                    "Обычно это занимает 1-3 минуты."
+                    "Обычно это занимает 1-3 минуты.\n\n"
+                    "Если возникли вопросы — напишите: @axillles1"
                 ),
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
